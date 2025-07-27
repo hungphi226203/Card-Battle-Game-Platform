@@ -1,0 +1,90 @@
+server:
+  address: 0.0.0.0
+  port: 8080
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      routes:
+        - id: auth_service
+          uri: http://localhost:8086
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=0
+
+        - id: user_service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/users/**
+          filters:
+            - StripPrefix=0
+
+        - id: card_service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/cards/**
+          filters:
+            - StripPrefix=0
+
+        - id: inventory_service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/inventory/**
+          filters:
+            - StripPrefix=0
+
+        - id: deck_service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/deck/**
+          filters:
+            - StripPrefix=0
+
+        - id: transaction_service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/transactions/**
+          filters:
+            - StripPrefix=0
+
+        - id: notification_service
+          uri: http://localhost:8085
+          predicates:
+            - Path=/notifications/**
+          filters:
+            - StripPrefix=0
+
+        - id: event_service
+          uri: http://localhost:8087
+          predicates:
+            - Path=/event/**
+          filters:
+            - StripPrefix=0
+
+jwt:
+  secret: vod7dlQ9f9qr6tgzmxwCzoiMDC6bbNJ9qkTief1QfBZAHjFn/t0BR5UPF4qfjblI
+  expiration: 86400000
+  refresh-expiration: 604800000
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.web.cors: DEBUG
+    org.springframework: INFO
+    com.web_game: DEBUG
+    reactor.netty.http.client: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: gateway, health, info
+  endpoint:
+    gateway:
+      enabled: true

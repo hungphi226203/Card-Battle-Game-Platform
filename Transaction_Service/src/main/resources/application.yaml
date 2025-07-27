@@ -1,0 +1,29 @@
+server:
+  port: 8084
+spring:
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:mysql://localhost:3306/web_game?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: 226203
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  redis:
+    host: localhost
+    port: 6379
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        linger.ms: 10
+        batch.size: 16384
+        compression.type: gzip
+logging:
+  level:
+    org.springframework: INFO
+    com.web_game: DEBUG
