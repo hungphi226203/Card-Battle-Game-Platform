@@ -22,7 +22,7 @@ public class UserDTO {
     private String fullName;
     private String phone;
     private Gender gender;
-    private BigDecimal balance;
+    private Float balance;
     private String image;
     private LocalDate dob;
     private LocalDateTime createdAt;

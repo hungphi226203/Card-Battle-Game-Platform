@@ -15,9 +15,12 @@ public interface InventoryService {
 
     void removeCardFromInventory(Long userId, Long cardId, String removedBy);
 
-    InventoryResponse listCardForSale(Long inventoryId, SellCardRequest request, Long userId);
+    void listCardForSale(Long inventoryId, SellCardRequest request, Long userId);
 
-    InventoryResponse cancelCardSale(Long inventoryId, Long userId);
+    void cancelCardSale(Long inventoryId, Long userId);
 
     List<InventoryResponse> getCardsForSale();
+
+    public List<InventoryResponse> getMyCardsForSale(Long userId);
+
 }

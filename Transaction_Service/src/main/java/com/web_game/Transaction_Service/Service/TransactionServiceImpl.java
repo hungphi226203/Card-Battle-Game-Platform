@@ -17,43 +17,32 @@ import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 
 @Service
 public class TransactionServiceImpl implements TransactionService {
 
     @Autowired
     private TransactionRepository transactionRepository;
-
     @Autowired
     private UserRepository userRepository;
-
     @Autowired
     private InventoryRepository inventoryRepository;
-
     @Autowired
     private AuditLogRepository auditLogRepository;
-
     @Autowired
     private KafkaTemplate<String, TransactionEvent> kafkaTemplate;
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-
-    private static final String TRANSACTION_CACHE_KEY = "transaction:";
-
-    /** ✅ Mua thẻ & hoàn tất giao dịch ngay */
     @Transactional
     @Override
     public TransactionResponse createAndCompleteTransaction(TransactionRequest request, Long buyerUserId) {
+        // 1. Validate
         Inventory inventory = inventoryRepository.findByInventoryIdAndIsForSaleTrue(request.getInventoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
@@ -62,65 +51,61 @@ public class TransactionServiceImpl implements TransactionService {
         User seller = userRepository.findById(inventory.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        if (buyer.getUserId().equals(seller.getUserId())) {
-            throw new AppException(ErrorCode.INVALID_TRANSACTION);
-        }
+        if (buyer.getUserId().equals(seller.getUserId())) throw new AppException(ErrorCode.INVALID_TRANSACTION);
+        if (buyer.getBalance().compareTo(inventory.getSalePrice()) < 0) throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
 
-        if (buyer.getBalance().compareTo(inventory.getSalePrice()) < 0) {
-            throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
-        }
-
-        // ✅ Trừ tiền buyer, cộng tiền seller
-        buyer.setBalance(buyer.getBalance().subtract(inventory.getSalePrice()));
-        seller.setBalance(seller.getBalance().add(inventory.getSalePrice()));
+        // 2. Update balance + save transaction record
+        buyer.setBalance(buyer.getBalance() - inventory.getSalePrice());
+        seller.setBalance(seller.getBalance() + inventory.getSalePrice());
         userRepository.save(buyer);
         userRepository.save(seller);
 
-        // ✅ Tạo transaction & set trạng thái COMPLETED luôn
         Transaction transaction = new Transaction();
         transaction.setSellerId(seller.getUserId());
         transaction.setBuyerId(buyer.getUserId());
-        transaction.setInventoryId(inventory.getInventoryId());
+        transaction.setInventoryId(inventory.getInventoryId()); // chỉ gửi ID, không update ownership
         transaction.setPrice(inventory.getSalePrice());
         transaction.setStatus(TransactionStatus.COMPLETED);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
-        transactionRepository.save(transaction);
+        Transaction savedTransaction = transactionRepository.save(transaction);
 
-        // ✅ Chuyển quyền sở hữu thẻ
-        inventory.setUserId(buyer.getUserId());
-        inventory.setIsForSale(false);
-        inventory.setIsOnDeck(false);
-        inventoryRepository.save(inventory);
+        // 3. Gửi Kafka event (ownership sẽ được InventoryService xử lý)
+        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, savedTransaction, savedTransaction.getPrice());
 
-        // ✅ Log & Kafka
+        // 4. Log audit
         saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, buyer.getUsername(), buyer.getUserId(),
-                inventory.getCardId(),
-                "Hoàn tất giao dịch auto: chuyển thẻ " + inventory.getCardId() + " từ user " +
-                        seller.getUserId() + " sang " + buyer.getUserId());
+                inventory.getCardId(), "Giao dịch hoàn tất: user " + buyer.getUserId() +
+                        " mua thẻ từ user " + seller.getUserId());
 
-        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, transaction, transaction.getPrice());
-
-        // ✅ Cache
-        TransactionResponse response = toResponse(transaction);
-        redisTemplate.opsForValue().set(TRANSACTION_CACHE_KEY + transaction.getTransactionId(), response, 1, TimeUnit.HOURS);
-        return response;
+        return toResponse(savedTransaction);
     }
 
     @Override
-    public TransactionResponse getTransaction(Long transactionId) {
-        String key = TRANSACTION_CACHE_KEY + transactionId;
-        TransactionResponse cached = (TransactionResponse) redisTemplate.opsForValue().get(key);
-        if (cached != null) return cached;
+    public List<TransactionResponse> getUserTransactions(Long userId, String role) {
+        List<Transaction> transactions;
 
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        TransactionResponse response = toResponse(transaction);
-        redisTemplate.opsForValue().set(key, response, 1, TimeUnit.HOURS);
-        return response;
+        if ("buyer".equalsIgnoreCase(role)) {
+            transactions = transactionRepository.findByBuyerId(userId);
+        } else if ("seller".equalsIgnoreCase(role)) {
+            transactions = transactionRepository.findBySellerId(userId);
+        } else {
+            transactions = transactionRepository.findByBuyerIdOrSellerId(userId, userId);
+        }
+
+        return transactions.stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    /** ✅ Cancel chỉ cho phép nếu giao dịch vẫn ở trạng thái PENDING */
+
+    @Override
+    public TransactionResponse getTransaction(Long transactionId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+        return toResponse(transaction);
+    }
+
     @Transactional
     @Override
     public TransactionResponse cancelTransaction(Long transactionId, Long userId) {
@@ -130,7 +115,6 @@ public class TransactionServiceImpl implements TransactionService {
         if (transaction.getStatus() != TransactionStatus.PENDING) {
             throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
         }
-
         if (!transaction.getBuyerId().equals(userId) && !transaction.getSellerId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
@@ -139,14 +123,13 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setUpdatedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        saveAuditLogAsync(AuditAction.CANCEL_TRANSACTION, userId.toString(), transaction.getBuyerId(),
-                null, "Hủy giao dịch " + transactionId + " bởi user " + userId);
+        try {
+            saveAuditLogAsync(AuditAction.CANCEL_TRANSACTION, userId.toString(), transaction.getBuyerId(),
+                    null, "Hủy giao dịch " + transactionId + " bởi user " + userId);
+            sendTransactionEventAsync(AuditAction.CANCEL_TRANSACTION, transaction, transaction.getPrice());
+        } catch (Exception ignored) {}
 
-        sendTransactionEventAsync(AuditAction.CANCEL_TRANSACTION, transaction, transaction.getPrice());
-
-        TransactionResponse response = toResponse(transaction);
-        redisTemplate.opsForValue().set(TRANSACTION_CACHE_KEY + transactionId, response, 1, TimeUnit.HOURS);
-        return response;
+        return toResponse(transaction);
     }
 
     private TransactionResponse toResponse(Transaction transaction) {
@@ -158,26 +141,30 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Async
     public void saveAuditLogAsync(String action, String actorUsername, Long targetUserId, Long cardId, String description) {
-        AuditLog log = new AuditLog();
-        log.setAction(action);
-        log.setActorUsername(actorUsername);
-        log.setTargetUserId(targetUserId);
-        log.setCardId(cardId);
-        log.setDescription(description);
-        log.setTimestamp(LocalDateTime.now());
-        auditLogRepository.save(log);
+        try {
+            AuditLog log = new AuditLog();
+            log.setAction(action);
+            log.setActorUsername(actorUsername);
+            log.setTargetUserId(targetUserId);
+            log.setCardId(cardId);
+            log.setDescription(description);
+            log.setTimestamp(LocalDateTime.now());
+            auditLogRepository.save(log);
+        } catch (Exception ignored) {}
     }
 
     @Async
-    public void sendTransactionEventAsync(String action, Transaction transaction, BigDecimal price) {
-        TransactionEvent event = new TransactionEvent();
-        event.setAction(action);
-        event.setTransactionId(transaction.getTransactionId());
-        event.setSellerId(transaction.getSellerId());
-        event.setBuyerId(transaction.getBuyerId());
-        event.setInventoryId(transaction.getInventoryId());
-        event.setPrice(price);
-        event.setTimestamp(LocalDateTime.now());
-        kafkaTemplate.send("transaction-events", event);
+    public void sendTransactionEventAsync(String action, Transaction transaction, Float price) {
+        try {
+            TransactionEvent event = new TransactionEvent();
+            event.setAction(action);
+            event.setTransactionId(transaction.getTransactionId());
+            event.setSellerId(transaction.getSellerId());
+            event.setBuyerId(transaction.getBuyerId());
+            event.setInventoryId(transaction.getInventoryId());
+            event.setPrice(price);
+            event.setTimestamp(LocalDateTime.now());
+            kafkaTemplate.send("transaction-events", event);
+        } catch (Exception ignored) {}
     }
 }

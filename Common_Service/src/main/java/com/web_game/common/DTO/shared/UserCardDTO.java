@@ -20,7 +20,7 @@ public class UserCardDTO {
     private String mainImg;
     private int mana;
     private int attack;
-    private int heal;
+    private int health;
     private boolean isOnDeck;
     private boolean isForSale;
     private Float salePrice;

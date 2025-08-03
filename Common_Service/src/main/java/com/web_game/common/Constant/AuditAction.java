@@ -9,4 +9,6 @@ public class AuditAction {
     public static final String CANCEL_TRANSACTION = "CANCEL_TRANSACTION";
     public static final String LIST_CARD_FOR_SALE = "LIST_CARD_FOR_SALE";
     public static final String CANCEL_CARD_SALE = "CANCEL_CARD_SALE";
+    public static final String TRANSFER_CARD = "TRANSFER_CARD";
+
 }

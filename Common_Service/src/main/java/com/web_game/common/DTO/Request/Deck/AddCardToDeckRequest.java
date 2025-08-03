@@ -13,4 +13,5 @@ import lombok.Setter;
 public class AddCardToDeckRequest {
     @NotNull(message = "Inventory ID không được null")
     private Long inventoryId;
+    //gửi dạng lisst listinventopryid
 }

@@ -7,7 +7,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -32,7 +31,7 @@ public class Transaction {
     private Long inventoryId;
 
     @Column(name = "price", nullable = false)
-    private BigDecimal price;
+    private Float price;
 
     @Column(name = "status")
     @Enumerated(EnumType.STRING)

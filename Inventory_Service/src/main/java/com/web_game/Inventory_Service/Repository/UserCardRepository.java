@@ -31,4 +31,5 @@ public interface UserCardRepository extends JpaRepository<Inventory, Long> {
     @Query("SELECT i FROM Inventory i WHERE i.userId = :userId AND i.isOnDeck = true")
     List<Inventory> findDeckCardsByUserId(@Param("userId") Long userId);
 
+    List<Inventory> findByUserIdAndIsForSaleTrueAndIsOnDeckFalse(Long userId);
 }

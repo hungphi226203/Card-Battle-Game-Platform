@@ -158,12 +158,11 @@ public class InventoryController {
         }
 
         Long userId = extractUserId(httpRequest);
-        InventoryResponse response = inventoryService.listCardForSale(inventoryId, request, userId);
+        inventoryService.listCardForSale(inventoryId, request, userId);
 
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
                 .message("Rao bán thẻ thành công")
-                .data(response)
                 .build());
     }
 
@@ -178,12 +177,11 @@ public class InventoryController {
         }
 
         Long userId = extractUserId(httpRequest);
-        InventoryResponse response = inventoryService.cancelCardSale(inventoryId, userId);
+        inventoryService.cancelCardSale(inventoryId, userId);
 
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
                 .message("Hủy rao bán thẻ thành công")
-                .data(response)
                 .build());
     }
 
@@ -198,4 +196,24 @@ public class InventoryController {
                 .data(cards)
                 .build());
     }
+
+    @GetMapping("/my-for-sale")
+    public ResponseEntity<ApiResponse> getMyCardsForSale(HttpServletRequest httpRequest) {
+        if (!hasRole(httpRequest, "USER")) {
+            return ResponseEntity.status(403).body(ApiResponse.builder()
+                    .code(403)
+                    .message("Forbidden: USER role required")
+                    .build());
+        }
+
+        Long userId = extractUserId(httpRequest);
+        List<InventoryResponse> myCards = inventoryService.getMyCardsForSale(userId);
+
+        return ResponseEntity.ok(ApiResponse.builder()
+                .code(200)
+                .message("Lấy danh sách thẻ đang rao bán của bạn thành công")
+                .data(myCards)
+                .build());
+    }
+
 }

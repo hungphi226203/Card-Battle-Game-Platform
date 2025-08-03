@@ -12,6 +12,6 @@ public class TransactionEvent {
     private Long sellerId;
     private Long buyerId;
     private Long inventoryId;
-    private BigDecimal price;
+    private Float price;
     private LocalDateTime timestamp;
 }

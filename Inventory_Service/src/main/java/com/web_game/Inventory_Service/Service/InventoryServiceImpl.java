@@ -3,6 +3,7 @@ package com.web_game.Inventory_Service.Service;
 import com.web_game.Inventory_Service.Repository.CardRepository;
 import com.web_game.Inventory_Service.Repository.AuditLogRepository;
 import com.web_game.Inventory_Service.Repository.UserCardRepository;
+import com.web_game.Inventory_Service.Repository.UserRepository;
 import com.web_game.common.Constant.AuditAction;
 import com.web_game.common.DTO.Request.UserCard.SellCardRequest;
 import com.web_game.common.DTO.Respone.InventoryResponse;
@@ -25,7 +26,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -118,7 +118,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Transactional
-    public InventoryResponse listCardForSale(Long inventoryId, SellCardRequest request, Long userId) {
+    public void listCardForSale(Long inventoryId, SellCardRequest request, Long userId) {
         Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
@@ -137,14 +137,10 @@ public class InventoryServiceImpl implements InventoryService {
                 "Rao bán thẻ " + inventory.getCardId() + " với giá " + request.getSalePrice());
 
         sendInventoryEventAsync(AuditAction.LIST_CARD_FOR_SALE, userId, inventory.getCardId(), inventoryId, request.getSalePrice());
-
-        InventoryResponse response = new InventoryResponse();
-        BeanUtils.copyProperties(inventory, response);
-        return response;
     }
 
     @Transactional
-    public InventoryResponse cancelCardSale(Long inventoryId, Long userId) {
+    public void cancelCardSale(Long inventoryId, Long userId) {
         Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
@@ -160,17 +156,56 @@ public class InventoryServiceImpl implements InventoryService {
                 "Hủy rao bán thẻ " + inventory.getCardId());
 
         sendInventoryEventAsync(AuditAction.CANCEL_CARD_SALE, userId, inventory.getCardId(), inventoryId, null);
-
-        InventoryResponse response = new InventoryResponse();
-        BeanUtils.copyProperties(inventory, response);
-        return response;
     }
+
+    @Autowired
+    private UserRepository userRepository;
 
     public List<InventoryResponse> getCardsForSale() {
         return userCardRepository.findByIsForSaleTrueAndIsOnDeckFalse().stream()
                 .map(inventory -> {
                     InventoryResponse response = new InventoryResponse();
                     BeanUtils.copyProperties(inventory, response);
+
+                    // Lấy thông tin thẻ
+                    cardRepository.findById(inventory.getCardId()).ifPresent(card -> {
+                        response.setCardName(card.getName());
+                        response.setImageUrl(card.getImageUrl());
+                        response.setMainImg(card.getMainImg());
+                        response.setRarity(card.getRarity());
+                        response.setType(card.getType());
+                    });
+
+                    // ✅ Lấy tên người bán
+                    userRepository.findById(inventory.getUserId()).ifPresent(user -> {
+                        response.setSellerName(user.getFullName()); // hoặc user.getUsername()
+                    });
+
+                    return response;
+                })
+                .collect(Collectors.toList());
+    }
+
+    public List<InventoryResponse> getMyCardsForSale(Long userId) {
+        return userCardRepository.findByUserIdAndIsForSaleTrueAndIsOnDeckFalse(userId)
+                .stream()
+                .map(inventory -> {
+                    InventoryResponse response = new InventoryResponse();
+                    BeanUtils.copyProperties(inventory, response);
+
+                    // Lấy thông tin thẻ
+                    cardRepository.findById(inventory.getCardId()).ifPresent(card -> {
+                        response.setCardName(card.getName());
+                        response.setImageUrl(card.getImageUrl());
+                        response.setMainImg(card.getMainImg());
+                        response.setRarity(card.getRarity());
+                        response.setType(card.getType());
+                    });
+
+                    userRepository.findById(userId).ifPresent(user -> {
+                        response.setSellerName(user.getFullName());
+                    });
+
                     return response;
                 })
                 .collect(Collectors.toList());
@@ -185,24 +220,21 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     public void handleTransactionEvent(TransactionEvent event) {
         if (AuditAction.COMPLETE_TRANSACTION.equals(event.getAction())) {
+
             Inventory inventory = userCardRepository.findById(event.getInventoryId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
-            userCardRepository.delete(inventory);
+            inventory.setUserId(event.getBuyerId());
+            inventory.setIsForSale(false);
+            inventory.setIsOnDeck(false);
+            inventory.setAcquiredAt(LocalDateTime.now());
+            userCardRepository.save(inventory);
 
-            Inventory newInventory = new Inventory();
-            newInventory.setUserId(event.getBuyerId());
-            newInventory.setCardId(inventory.getCardId());
-            newInventory.setAcquiredAt(LocalDateTime.now());
-            newInventory.setIsForSale(false);
-            newInventory.setIsOnDeck(false);
-            userCardRepository.save(newInventory);
+            saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, "SYSTEM", event.getBuyerId(),
+                    inventory.getCardId(), "Ownership updated via Kafka for inventory " + inventory.getInventoryId());
 
-            saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, "SYSTEM", event.getBuyerId(), inventory.getCardId(),
-                    "Chuyển thẻ " + inventory.getCardId() + " từ user " + event.getSellerId() + " sang user " + event.getBuyerId());
-
-            sendInventoryEventAsync(AuditAction.ADD_CARD, event.getBuyerId(), inventory.getCardId(), newInventory.getInventoryId(), null);
-            sendInventoryEventAsync(AuditAction.REMOVE_CARD, event.getSellerId(), inventory.getCardId(), inventory.getInventoryId(), null);
+            sendInventoryEventAsync(AuditAction.TRANSFER_CARD, event.getBuyerId(), inventory.getCardId(),
+                    inventory.getInventoryId(), null);
         }
     }
 

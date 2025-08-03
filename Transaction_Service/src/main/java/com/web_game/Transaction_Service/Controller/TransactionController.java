@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/transactions")
 public class TransactionController {
@@ -56,6 +58,32 @@ public class TransactionController {
                 .code(201)
                 .message("Mua thẻ thành công - giao dịch hoàn tất")
                 .data(response)
+                .build());
+    }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse> getUserTransactions(HttpServletRequest httpRequest,
+                                                           @RequestParam(defaultValue = "all") String role) {
+        if (!hasRole(httpRequest, "USER")) {
+            return ResponseEntity.status(403).body(ApiResponse.builder()
+                    .code(403)
+                    .message("Forbidden: USER role required")
+                    .build());
+        }
+
+        Long userId = extractUserId(httpRequest);
+        if (userId == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.builder()
+                    .code(400)
+                    .message("Missing or invalid X-UserId header")
+                    .build());
+        }
+
+        List<TransactionResponse> transactions = transactionService.getUserTransactions(userId, role);
+        return ResponseEntity.ok(ApiResponse.builder()
+                .code(200)
+                .message("Lấy danh sách giao dịch thành công")
+                .data(transactions)
                 .build());
     }
 

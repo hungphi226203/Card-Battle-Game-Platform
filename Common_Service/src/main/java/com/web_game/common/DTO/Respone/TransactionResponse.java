@@ -11,7 +11,7 @@ public class TransactionResponse {
     private Long sellerId;
     private Long buyerId;
     private Long inventoryId;
-    private BigDecimal price;
+    private Float price;
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

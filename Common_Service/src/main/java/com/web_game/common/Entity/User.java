@@ -42,7 +42,7 @@ public class User {
     private LocalDate dob;
 
     @Column(name = "balance", nullable = false)
-    private BigDecimal balance = BigDecimal.ZERO;
+    private Float balance;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
