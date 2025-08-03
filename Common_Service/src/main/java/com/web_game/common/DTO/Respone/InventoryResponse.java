@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 public class InventoryResponse {
     private Long inventoryId;
     private Long userId;
-    private Integer cardId;
+    private Long cardId;
     private Boolean isForSale;
     private BigDecimal salePrice;
     private LocalDateTime acquiredAt;

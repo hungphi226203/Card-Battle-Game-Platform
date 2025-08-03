@@ -189,12 +189,6 @@ public class InventoryController {
 
     @GetMapping("/for-sale")
     public ResponseEntity<ApiResponse> getCardsForSale(HttpServletRequest request) {
-        if (!hasRole(request, "USER")) {
-            return ResponseEntity.status(403).body(ApiResponse.builder()
-                    .code(403)
-                    .message("Forbidden: USER role required")
-                    .build());
-        }
 
         List<InventoryResponse> cards = inventoryService.getCardsForSale();
 

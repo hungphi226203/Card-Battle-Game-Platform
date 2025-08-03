@@ -5,6 +5,7 @@ import com.web_game.Event_Service.Repository.GachaHistoryRepository;
 import com.web_game.common.DTO.Respone.GachaResponse;
 import com.web_game.common.Entity.Card;
 import com.web_game.common.Entity.GachaHistory;
+import com.web_game.common.Enum.Rarity;
 import com.web_game.common.Event.GachaEvent;
 import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
@@ -14,12 +15,14 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class EventServiceImpl implements EventService{
+public class EventServiceImpl implements EventService {
+
     @Autowired
     private GachaHistoryRepository gachaHistoryRepository;
 
@@ -29,42 +32,81 @@ public class EventServiceImpl implements EventService{
     @Autowired
     private KafkaTemplate<String, GachaEvent> kafkaTemplate;
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private static final double COMMON_RATE = 0.7;
+    private static final double RARE_RATE = 0.2;
+    private static final double EPIC_RATE = 0.09;
+    private static final double LEGENDARY_RATE = 0.01;
 
-    private static final String CARDS_CACHE_KEY = "cards_list";
+    private List<Card> getCardsByRarity(Rarity rarity) {
+        return cardRepository.findByRarity(rarity);
+    }
 
-    public GachaResponse performGacha(Long userId) {
-        List<Card> cards = (List<Card>) redisTemplate.opsForValue().get(CARDS_CACHE_KEY);
-        if (cards == null) {
-            cards = cardRepository.findAll();
-            if (cards.isEmpty()) {
-                throw new AppException(ErrorCode.INVALID_CARD_VALUE);
-            }
-            redisTemplate.opsForValue().set(CARDS_CACHE_KEY, cards, 1, TimeUnit.HOURS);
+    // Random card theo tỷ lệ
+    private Card getRandomCard() {
+        List<Card> common = getCardsByRarity(Rarity.COMMON);
+        List<Card> rare = getCardsByRarity(Rarity.RARE);
+        List<Card> epic = getCardsByRarity(Rarity.EPIC);
+        List<Card> legendary = getCardsByRarity(Rarity.LEGENDARY);
+
+        if (common.isEmpty() || rare.isEmpty() || epic.isEmpty() || legendary.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_CARD_VALUE);
         }
 
-        Random random = new Random();
-        Card selectedCard = cards.get(random.nextInt(cards.size()));
-        Long cardId = selectedCard.getCardId();
+        double r = Math.random();
+        Random rand = new Random();
+        if (r < LEGENDARY_RATE) return legendary.get(rand.nextInt(legendary.size()));
+        if (r < LEGENDARY_RATE + EPIC_RATE) return epic.get(rand.nextInt(epic.size()));
+        if (r < LEGENDARY_RATE + EPIC_RATE + RARE_RATE) return rare.get(rand.nextInt(rare.size()));
+        return common.get(rand.nextInt(common.size()));
+    }
 
-        GachaHistory gachaHistory = new GachaHistory();
-        gachaHistory.setUserId(userId);
-        gachaHistory.setCardId(cardId);
-        gachaHistory.setTimestamp(LocalDateTime.now());
-        gachaHistoryRepository.save(gachaHistory);
+    // Lưu lịch sử + gửi Kafka + trả response
+    private GachaResponse saveGacha(Long userId, Card card) {
+        GachaHistory history = new GachaHistory();
+        history.setUserId(userId);
+        history.setCardId(card.getCardId());
+        history.setTimestamp(LocalDateTime.now());
+        gachaHistoryRepository.save(history);
 
         GachaEvent event = new GachaEvent();
         event.setUserId(userId);
-        event.setCardId(cardId);
+        event.setCardId(card.getCardId());
         event.setTimestamp(LocalDateTime.now());
         kafkaTemplate.send("gacha-events", event);
 
         GachaResponse response = new GachaResponse();
-        response.setId(gachaHistory.getId());
+        response.setId(history.getId());
         response.setUserId(userId);
-        response.setCardId(cardId);
-        response.setCardName(selectedCard.getName());
+        response.setCardId(card.getCardId());
+        response.setCardName(card.getName());
         return response;
+    }
+
+    @Override
+    public GachaResponse performSingleGacha(Long userId) {
+        Card card = getRandomCard();
+        return saveGacha(userId, card);
+    }
+
+    @Override
+    public List<GachaResponse> performMultiGacha(Long userId) {
+        List<Card> legendary = getCardsByRarity(Rarity.LEGENDARY);
+        if (legendary.isEmpty()) throw new AppException(ErrorCode.INVALID_CARD_VALUE);
+
+        List<GachaResponse> results = new ArrayList<>();
+        boolean hasLegendary = false;
+
+        for (int i = 0; i < 10; i++) {
+            Card card = getRandomCard();
+            if (card.getRarity() == Rarity.LEGENDARY) hasLegendary = true;
+            results.add(saveGacha(userId, card));
+        }
+
+        if (!hasLegendary) {
+            Card guaranteedLegendary = legendary.get(new Random().nextInt(legendary.size()));
+            results.set(10 - 1, saveGacha(userId, guaranteedLegendary));
+        }
+
+        return results;
     }
 }

@@ -50,43 +50,58 @@ public class TransactionServiceImpl implements TransactionService {
 
     private static final String TRANSACTION_CACHE_KEY = "transaction:";
 
+    /** ✅ Mua thẻ & hoàn tất giao dịch ngay */
     @Transactional
     @Override
-    public TransactionResponse createTransaction(TransactionRequest request, Long buyerUserId) {
+    public TransactionResponse createAndCompleteTransaction(TransactionRequest request, Long buyerUserId) {
         Inventory inventory = inventoryRepository.findByInventoryIdAndIsForSaleTrue(request.getInventoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
         User buyer = userRepository.findById(buyerUserId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        User seller = userRepository.findById(inventory.getUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (buyer.getUserId().equals(seller.getUserId())) {
+            throw new AppException(ErrorCode.INVALID_TRANSACTION);
+        }
 
         if (buyer.getBalance().compareTo(inventory.getSalePrice()) < 0) {
             throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
         }
 
-        User seller = userRepository.findById(inventory.getUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        // ✅ Trừ tiền buyer, cộng tiền seller
+        buyer.setBalance(buyer.getBalance().subtract(inventory.getSalePrice()));
+        seller.setBalance(seller.getBalance().add(inventory.getSalePrice()));
+        userRepository.save(buyer);
+        userRepository.save(seller);
 
-        if (seller.getUserId().equals(buyer.getUserId())) {
-            throw new AppException(ErrorCode.INVALID_TRANSACTION);
-        }
-
+        // ✅ Tạo transaction & set trạng thái COMPLETED luôn
         Transaction transaction = new Transaction();
         transaction.setSellerId(seller.getUserId());
         transaction.setBuyerId(buyer.getUserId());
         transaction.setInventoryId(inventory.getInventoryId());
         transaction.setPrice(inventory.getSalePrice());
-        transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setStatus(TransactionStatus.COMPLETED);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        // Log + Kafka
-        saveAuditLogAsync(AuditAction.CREATE_TRANSACTION, buyer.getUsername(), seller.getUserId(), inventory.getCardId(),
-                "Tạo giao dịch mua thẻ " + inventory.getCardId() + " từ user " + seller.getUserId());
+        // ✅ Chuyển quyền sở hữu thẻ
+        inventory.setUserId(buyer.getUserId());
+        inventory.setIsForSale(false);
+        inventory.setIsOnDeck(false);
+        inventoryRepository.save(inventory);
 
-        sendTransactionEventAsync(AuditAction.CREATE_TRANSACTION, transaction, transaction.getPrice());
+        // ✅ Log & Kafka
+        saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, buyer.getUsername(), buyer.getUserId(),
+                inventory.getCardId(),
+                "Hoàn tất giao dịch auto: chuyển thẻ " + inventory.getCardId() + " từ user " +
+                        seller.getUserId() + " sang " + buyer.getUserId());
 
-        // Cache
+        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, transaction, transaction.getPrice());
+
+        // ✅ Cache
         TransactionResponse response = toResponse(transaction);
         redisTemplate.opsForValue().set(TRANSACTION_CACHE_KEY + transaction.getTransactionId(), response, 1, TimeUnit.HOURS);
         return response;
@@ -101,67 +116,20 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
         TransactionResponse response = toResponse(transaction);
-
         redisTemplate.opsForValue().set(key, response, 1, TimeUnit.HOURS);
         return response;
     }
 
-    @Transactional
-    @Override
-    public TransactionResponse completeTransaction(Long transactionId) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-
-        if (transaction.getStatus() != TransactionStatus.PENDING)
-            throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
-
-        Inventory inventory = inventoryRepository.findById(transaction.getInventoryId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
-
-        User buyer = userRepository.findById(transaction.getBuyerId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        User seller = userRepository.findById(transaction.getSellerId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        if (buyer.getBalance().compareTo(transaction.getPrice()) < 0) {
-            throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
-        }
-
-        // Cập nhật tiền
-        buyer.setBalance(buyer.getBalance().subtract(transaction.getPrice()));
-        seller.setBalance(seller.getBalance().add(transaction.getPrice()));
-        userRepository.save(buyer);
-        userRepository.save(seller);
-
-        // Cập nhật trạng thái
-        transaction.setStatus(TransactionStatus.COMPLETED);
-        transaction.setUpdatedAt(LocalDateTime.now());
-        transactionRepository.save(transaction);
-
-        // Chuyển quyền sở hữu inventory
-        inventory.setUserId(buyer.getUserId());
-        inventory.setIsForSale(false);
-        inventory.setIsOnDeck(false);
-        inventoryRepository.save(inventory);
-
-        saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, "SYSTEM", buyer.getUserId(), inventory.getCardId(),
-                "Hoàn tất giao dịch " + transactionId + ": chuyển thẻ từ user " + seller.getUserId() + " sang " + buyer.getUserId());
-
-        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, transaction, transaction.getPrice());
-
-        TransactionResponse response = toResponse(transaction);
-        redisTemplate.opsForValue().set(TRANSACTION_CACHE_KEY + transactionId, response, 1, TimeUnit.HOURS);
-        return response;
-    }
-
+    /** ✅ Cancel chỉ cho phép nếu giao dịch vẫn ở trạng thái PENDING */
     @Transactional
     @Override
     public TransactionResponse cancelTransaction(Long transactionId, Long userId) {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-        if (transaction.getStatus() != TransactionStatus.PENDING)
+        if (transaction.getStatus() != TransactionStatus.PENDING) {
             throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
+        }
 
         if (!transaction.getBuyerId().equals(userId) && !transaction.getSellerId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
@@ -171,12 +139,8 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setUpdatedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
 
-        Inventory inventory = inventoryRepository.findById(transaction.getInventoryId())
-                .orElse(null);
-        Long cardId = inventory != null ? inventory.getCardId() : null;
-
-        saveAuditLogAsync(AuditAction.CANCEL_TRANSACTION, userId.toString(), transaction.getBuyerId(), cardId,
-                "Hủy giao dịch " + transactionId + " bởi userId " + userId);
+        saveAuditLogAsync(AuditAction.CANCEL_TRANSACTION, userId.toString(), transaction.getBuyerId(),
+                null, "Hủy giao dịch " + transactionId + " bởi user " + userId);
 
         sendTransactionEventAsync(AuditAction.CANCEL_TRANSACTION, transaction, transaction.getPrice());
 
@@ -194,14 +158,14 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Async
     public void saveAuditLogAsync(String action, String actorUsername, Long targetUserId, Long cardId, String description) {
-        AuditLog auditLog = new AuditLog();
-        auditLog.setAction(action);
-        auditLog.setActorUsername(actorUsername);
-        auditLog.setTargetUserId(targetUserId);
-        auditLog.setCardId(cardId);
-        auditLog.setDescription(description);
-        auditLog.setTimestamp(LocalDateTime.now());
-        auditLogRepository.save(auditLog);
+        AuditLog log = new AuditLog();
+        log.setAction(action);
+        log.setActorUsername(actorUsername);
+        log.setTargetUserId(targetUserId);
+        log.setCardId(cardId);
+        log.setDescription(description);
+        log.setTimestamp(LocalDateTime.now());
+        auditLogRepository.save(log);
     }
 
     @Async

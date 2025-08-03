@@ -8,9 +8,6 @@ import lombok.Data;
 @Data
 public class EffectUpdateRequest {
 
-    @Size(max = 100, message = "Effect name must be less than 100 characters")
-    private String name;
-
     private EffectType type;
 
     private Integer value;

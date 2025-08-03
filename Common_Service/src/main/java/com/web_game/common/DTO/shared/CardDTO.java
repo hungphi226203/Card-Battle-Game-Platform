@@ -20,6 +20,7 @@ public class CardDTO {
     private String description;
     private String animationId;
     private String imageUrl;
+    private String mainImg;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<CardEffectBinding> effectBindings;

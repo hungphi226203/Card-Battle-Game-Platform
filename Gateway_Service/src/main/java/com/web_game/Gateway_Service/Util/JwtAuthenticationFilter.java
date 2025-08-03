@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -24,9 +25,12 @@ import java.util.List;
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final String secretKey;
+    private final StringRedisTemplate redisTemplate;
 
-    public JwtAuthenticationFilter(@Value("${jwt.secret}") String secretKey) {
+    public JwtAuthenticationFilter(@Value("${jwt.secret}") String secretKey,
+                                   StringRedisTemplate redisTemplate) {
         this.secretKey = secretKey;
+        this.redisTemplate = redisTemplate;
     }
 
     private SecretKey getSigningKey() {
@@ -41,21 +45,18 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         // Skip JWT processing for auth endpoints
         if (path.startsWith("/auth/")) {
-            log.info("Skipping JWT validation for auth endpoint: {}", path);
             return chain.filter(exchange);
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        log.info("Processing request to: {} with auth header: {}", path, authHeader != null ? "Bearer ***" : "null");
-
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warn("No valid Authorization header found for path: {}", path);
-            return handleUnauthorized(exchange);
+            return handleUnauthorized(exchange, "Missing or invalid Authorization header");
         }
 
         String token = authHeader.substring(7);
 
         try {
+            // ✅ 1. Parse JWT
             Claims claims = Jwts.parserBuilder()
                     .setSigningKey(getSigningKey())
                     .build()
@@ -66,23 +67,17 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             Object userIdObj = claims.get("userId");
             List<String> roles = claims.get("roles", List.class);
 
-            // Handle userId conversion properly
-            Long userId;
-            if (userIdObj instanceof Integer) {
-                userId = ((Integer) userIdObj).longValue();
-            } else if (userIdObj instanceof Long) {
-                userId = (Long) userIdObj;
-            } else if (userIdObj instanceof String) {
-                userId = Long.parseLong((String) userIdObj);
-            } else {
-                log.error("Invalid userId type in JWT: {}", userIdObj.getClass());
-                return handleUnauthorized(exchange);
+            // ✅ 2. Check session Redis
+            String sessionToken = redisTemplate.opsForValue().get("session:" + username);
+            if (sessionToken == null || !sessionToken.equals(token)) {
+                log.warn("Token for user {} has been revoked or expired", username);
+                return handleUnauthorized(exchange, "Token revoked");
             }
 
-            log.info("JWT validated successfully - Username: {}, UserId: {}, Roles: {}", username, userId, roles);
-
+            // ✅ 3. Add custom headers for downstream services
+            Long userId = Long.valueOf(userIdObj.toString());
             ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-UserId", String.valueOf(userId))
+                    .header("X-UserId", userId.toString())
                     .header("X-Username", username)
                     .header("X-Roles", String.join(",", roles))
                     .build();
@@ -92,19 +87,16 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         } catch (Exception e) {
             log.error("JWT validation failed for path {}: {}", path, e.getMessage());
-            return handleUnauthorized(exchange);
+            return handleUnauthorized(exchange, "Invalid or expired token");
         }
     }
 
-    private Mono<Void> handleUnauthorized(ServerWebExchange exchange) {
+    private Mono<Void> handleUnauthorized(ServerWebExchange exchange, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().add("Content-Type", "application/json");
-
-        String body = "{\"code\":401,\"message\":\"Unauthorized - Invalid or missing token\",\"data\":null}";
-        org.springframework.core.io.buffer.DataBuffer buffer = response.bufferFactory().wrap(body.getBytes());
-
-        return response.writeWith(Mono.just(buffer));
+        String body = String.format("{\"code\":401,\"message\":\"Unauthorized - %s\",\"data\":null}", message);
+        return response.writeWith(Mono.just(response.bufferFactory().wrap(body.getBytes())));
     }
 
     @Override

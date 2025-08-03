@@ -58,6 +58,7 @@ public enum ErrorCode {
     INSUFFICIENT_BALANCE(1035, "Số dư không đủ", HttpStatus.BAD_REQUEST),
     INVALID_TRANSACTION(1036, "Giao dịch không hợp lệ", HttpStatus.BAD_REQUEST),
     USER_CARD_NOT_FOR_SALE(1037, "Thẻ không được rao bán", HttpStatus.BAD_REQUEST),
+    CARD_ALREADY_SOLD(1037, "Thẻ vừa bán", HttpStatus.BAD_REQUEST),
 
     CARD_ALREADY_FOR_SALE(1038, "Thẻ đã được rao bán", HttpStatus.BAD_REQUEST),
     CARD_NOT_FOR_SALE(1039, "Thẻ chưa được rao bán", HttpStatus.BAD_REQUEST),

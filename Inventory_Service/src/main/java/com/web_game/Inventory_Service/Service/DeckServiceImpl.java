@@ -38,7 +38,7 @@ public class DeckServiceImpl implements DeckService {
 
     @Override
     public DeckResponse getUserDeck(Long userId) {
-        List<Inventory> deckCards = userCardRepository.findByUserUserIdAndIsOnDeckTrue(userId);
+        List<Inventory> deckCards = userCardRepository.findDeckCardsByUserId(userId);
 
         if (deckCards.size() != 30) {
             throw new AppException(ErrorCode.INVALID_DECK_SIZE);
@@ -65,13 +65,12 @@ public class DeckServiceImpl implements DeckService {
             throw new AppException(ErrorCode.INVALID_CARD_OWNERSHIP);
         }
 
-        boolean hasCardForSale = requestedCards.stream()
-                .anyMatch(Inventory::getIsForSale);
+        boolean hasCardForSale = requestedCards.stream().anyMatch(Inventory::getIsForSale);
         if (hasCardForSale) {
             throw new AppException(ErrorCode.CARD_IN_SALE_CANNOT_BE_IN_DECK);
         }
 
-        List<Inventory> oldDeckCards = userCardRepository.findByUserUserIdAndIsOnDeckTrue(userId);
+        List<Inventory> oldDeckCards = userCardRepository.findDeckCardsByUserId(userId);
         oldDeckCards.forEach(card -> card.setIsOnDeck(false));
         userCardRepository.saveAll(oldDeckCards);
 
@@ -87,27 +86,19 @@ public class DeckServiceImpl implements DeckService {
     @Override
     @Transactional
     public DeckResponse addCardToDeck(Long userId, Long inventoryId) {
-        List<Inventory> currentDeck = userCardRepository.findByUserUserIdAndIsOnDeckTrue(userId);
-        if (currentDeck.size() >= 30) {
-            throw new AppException(ErrorCode.DECK_FULL);
-        }
+        List<Inventory> currentDeck = userCardRepository.findDeckCardsByUserId(userId);
+        if (currentDeck.size() >= 30) throw new AppException(ErrorCode.DECK_FULL);
 
         Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
-        if (inventory.getIsOnDeck()) {
-            throw new AppException(ErrorCode.CARD_ALREADY_IN_DECK);
-        }
-
-        if (inventory.getIsForSale()) {
-            throw new AppException(ErrorCode.CARD_IN_SALE_CANNOT_BE_IN_DECK);
-        }
+        if (inventory.getIsOnDeck()) throw new AppException(ErrorCode.CARD_ALREADY_IN_DECK);
+        if (inventory.getIsForSale()) throw new AppException(ErrorCode.CARD_IN_SALE_CANNOT_BE_IN_DECK);
 
         inventory.setIsOnDeck(true);
         userCardRepository.save(inventory);
 
         sendDeckEventAsync("ADD_CARD_TO_DECK", userId, List.of(inventory.getCardId()));
-
         return getUserDeck(userId);
     }
 
@@ -117,49 +108,42 @@ public class DeckServiceImpl implements DeckService {
         Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
-        if (!inventory.getIsOnDeck()) {
-            throw new AppException(ErrorCode.CARD_NOT_IN_DECK);
-        }
+        if (!inventory.getIsOnDeck()) throw new AppException(ErrorCode.CARD_NOT_IN_DECK);
 
         inventory.setIsOnDeck(false);
         userCardRepository.save(inventory);
 
         sendDeckEventAsync("REMOVE_CARD_FROM_DECK", userId, List.of(inventory.getCardId()));
-
         return getUserDeck(userId);
     }
 
     @Override
     public CollectionResponse getUserCollection(Long userId) {
         List<Card> allCards = cardRepository.findAll();
-
         List<Inventory> userCards = userCardRepository.findByUserId(userId);
+
         Map<Long, Long> cardCountMap = userCards.stream()
                 .collect(Collectors.groupingBy(Inventory::getCardId, Collectors.counting()));
 
-        List<CollectionCardDTO> collectionCards = allCards.stream()
-                .map(card -> {
-                    CollectionCardDTO dto = new CollectionCardDTO();
-                    dto.setCardId(card.getCardId());
-                    dto.setName(card.getName());
-                    dto.setType(card.getType());
-                    dto.setRarity(card.getRarity());
-                    dto.setMana(card.getMana());
-                    dto.setAttack(card.getAttack());
-                    dto.setHealth(card.getHealth());
-                    dto.setImage(card.getImage());
-                    dto.setDescription(card.getDescription());
+        List<CollectionCardDTO> collectionCards = allCards.stream().map(card -> {
+            CollectionCardDTO dto = new CollectionCardDTO();
+            dto.setCardId(card.getCardId());
+            dto.setName(card.getName());
+            dto.setType(card.getType());
+            dto.setRarity(card.getRarity());
+            dto.setMana(card.getMana());
+            dto.setAttack(card.getAttack());
+            dto.setHealth(card.getHealth());
+            dto.setImage(card.getMainImg());
+            Long count = cardCountMap.getOrDefault(card.getCardId(), 0L);
+            dto.setOwned(count > 0);
+            dto.setQuantity(count.intValue());
+            return dto;
+        }).collect(Collectors.toList());
 
-                    Long count = cardCountMap.getOrDefault(card.getCardId(), 0L);
-                    dto.setOwned(count > 0);
-                    dto.setQuantity(count.intValue());
-
-                    return dto;
-                })
-                .collect(Collectors.toList());
-
-        int ownedCards = (int) collectionCards.stream().mapToLong(card -> card.isOwned() ? 1 : 0).sum();
-        double completionPercentage = allCards.isEmpty() ? 0 : (double) ownedCards / allCards.size() * 100;
+        int ownedCards = (int) collectionCards.stream().filter(CollectionCardDTO::isOwned).count();
+        double completionPercentage = allCards.isEmpty() ? 0 :
+                (double) ownedCards / allCards.size() * 100;
 
         CollectionResponse response = new CollectionResponse();
         response.setUserId(userId);
@@ -167,7 +151,6 @@ public class DeckServiceImpl implements DeckService {
         response.setTotalCards(allCards.size());
         response.setOwnedCards(ownedCards);
         response.setCompletionPercentage(Math.round(completionPercentage * 100.0) / 100.0);
-
         return response;
     }
 
@@ -182,7 +165,9 @@ public class DeckServiceImpl implements DeckService {
     }
 
     private DeckCardDTO convertToDeckCardDTO(Inventory inventory) {
-        Card card = inventory.getCard();
+        Card card = cardRepository.findById(inventory.getCardId())
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CARD_VALUE));
+
         DeckCardDTO dto = new DeckCardDTO();
         dto.setInventoryId(inventory.getInventoryId());
         dto.setCardId(card.getCardId());
@@ -192,25 +177,24 @@ public class DeckServiceImpl implements DeckService {
         dto.setMana(card.getMana());
         dto.setAttack(card.getAttack());
         dto.setHealth(card.getHealth());
-        dto.setImage(card.getImage());
-        dto.setDescription(card.getDescription());
+        dto.setImage(card.getImageUrl());
+        dto.setMainImg(card.getMainImg());
 
         if (card.getEffectBindings() != null) {
-            dto.setEffects(card.getEffectBindings().stream()
-                    .map(binding -> {
-                        EffectDTO effectDTO = new EffectDTO();
-                        effectDTO.setEffectId(binding.getEffect().getEffectId());
-                        effectDTO.setType(binding.getEffect().getType());
-                        effectDTO.setValue(binding.getEffect().getValue());
-                        effectDTO.setTarget(binding.getEffect().getTarget());
-                        effectDTO.setAnimationId(binding.getEffect().getAnimationId());
-                        effectDTO.setBuffType(binding.getEffect().getBuffType());
-                        effectDTO.setDuration(binding.getEffect().getDuration());
-                        effectDTO.setIsStartOfTurn(binding.getEffect().getIsStartOfTurn());
-                        effectDTO.setSummonMinionIds(binding.getEffect().getSummonMinionIds());
-                        return effectDTO;
-                    })
-                    .collect(Collectors.toList()));
+            dto.setEffects(card.getEffectBindings().stream().map(binding -> {
+                EffectDTO effectDTO = new EffectDTO();
+                effectDTO.setEffectId(binding.getEffect().getEffectId());
+                effectDTO.setType(binding.getEffect().getType());
+                effectDTO.setValue(binding.getEffect().getValue());
+                effectDTO.setTarget(binding.getEffect().getTarget());
+                effectDTO.setAnimationId(binding.getEffect().getAnimationId());
+                effectDTO.setBuffType(binding.getEffect().getBuffType());
+                effectDTO.setDuration(binding.getEffect().getDuration());
+                effectDTO.setIsStartOfTurn(binding.getEffect().getIsStartOfTurn());
+                effectDTO.setSummonMinionIds(binding.getEffect().getSummonMinionIds());
+                effectDTO.setTriggerType(binding.getTriggerType());
+                return effectDTO;
+            }).collect(Collectors.toList()));
         }
 
         return dto;

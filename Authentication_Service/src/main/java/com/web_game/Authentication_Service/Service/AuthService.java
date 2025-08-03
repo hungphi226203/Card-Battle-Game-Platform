@@ -14,7 +14,7 @@ public interface AuthService {
 
     public String login(String username, String password);
 
-    public void logout(String username);
+    public void logout(String token);
 
     public Map<String, Object> verifyToken(String token);
 

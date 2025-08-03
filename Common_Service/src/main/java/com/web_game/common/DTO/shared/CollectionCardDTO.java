@@ -20,7 +20,6 @@ public class CollectionCardDTO {
     private Integer attack;
     private Integer health;
     private String image;
-    private String description;
     private boolean owned;
     private int quantity;
 }

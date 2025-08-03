@@ -57,10 +57,8 @@ public class CardServiceImpl implements CardService{
         card.setCreatedAt(LocalDateTime.now());
         card.setUpdatedAt(LocalDateTime.now());
 
-        // Lưu card trước
         Card savedCard = cardRepository.save(card);
 
-        // Tạo các effect bindings nếu có
         if (request.getEffectBindings() != null && !request.getEffectBindings().isEmpty()) {
             createEffectBindings(savedCard, request.getEffectBindings());
         }
@@ -76,7 +74,6 @@ public class CardServiceImpl implements CardService{
         Card card = cardRepository.findByCardId(cardId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_CARD_VALUE));
 
-        // Copy các field cơ bản
         if (request.getName() != null) card.setName(request.getName());
         if (request.getType() != null) card.setType(request.getType());
         if (request.getRarity() != null) card.setRarity(request.getRarity());
@@ -84,16 +81,14 @@ public class CardServiceImpl implements CardService{
         if (request.getAttack() != null) card.setAttack(request.getAttack());
         if (request.getHealth() != null) card.setHealth(request.getHealth());
         if (request.getDescription() != null) card.setDescription(request.getDescription());
+        if (request.getImageUrl() != null) card.setImageUrl(request.getImageUrl());
+        if (request.getMainImg() != null) card.setMainImg(request.getMainImg());
 
         card.setUpdatedAt(LocalDateTime.now());
         Card savedCard = cardRepository.save(card);
 
-        // Cập nhật effect bindings nếu có
         if (request.getEffectBindings() != null) {
-            // Xóa tất cả binding cũ
             cardEffectBindingRepository.deleteByCardId(cardId);
-
-            // Tạo binding mới
             if (!request.getEffectBindings().isEmpty()) {
                 createEffectBindings(savedCard, request.getEffectBindings());
             }
@@ -109,21 +104,15 @@ public class CardServiceImpl implements CardService{
     public void deleteCard(Long cardId) {
         Card card = cardRepository.findByCardId(cardId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_CARD_VALUE));
-
-        // Xóa tất cả effect bindings trước
         cardEffectBindingRepository.deleteByCardId(cardId);
-
-        // Xóa card
         cardRepository.delete(card);
     }
 
     public void createEffectBindings(Card card, List<CardEffectBindingRequest> bindingRequests) {
         for (CardEffectBindingRequest bindingRequest : bindingRequests) {
-            // Kiểm tra effect có tồn tại không
             CardEffect effect = cardEffectRepository.findById(bindingRequest.getEffectId())
                     .orElseThrow(() -> new AppException(ErrorCode.INVALID_EFFECT_VALUE));
 
-            // Tạo binding
             CardEffectBinding binding = new CardEffectBinding();
             binding.setCard(card);
             binding.setEffect(effect);

@@ -23,6 +23,6 @@ public class DeckCardDTO {
     private Integer attack;
     private Integer health;
     private String image;
-    private String description;
+    private String mainImg;
     private List<EffectDTO> effects;
 }

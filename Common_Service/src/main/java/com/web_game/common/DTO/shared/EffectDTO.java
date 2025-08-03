@@ -2,6 +2,7 @@ package com.web_game.common.DTO.shared;
 
 import com.web_game.common.Enum.EffectType;
 import com.web_game.common.Enum.Target;
+import com.web_game.common.Enum.TriggerType;
 import lombok.Data;
 
 @Data
@@ -15,4 +16,5 @@ public class EffectDTO {
     private Integer duration;
     private Boolean isStartOfTurn;
     private String summonMinionIds;
+    private TriggerType triggerType;
 }

@@ -31,9 +31,8 @@ public class Inventory {
     private Boolean isForSale = false;
 
     @Column(name = "sale_price")
-    private BigDecimal salePrice;
+    private Float salePrice;
 
-    //new
     @Column(name = "is_on_deck")
     private Boolean isOnDeck = false;
 

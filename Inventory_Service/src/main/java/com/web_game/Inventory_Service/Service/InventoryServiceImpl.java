@@ -52,8 +52,13 @@ public class InventoryServiceImpl implements InventoryService {
                     return new UserCardDTO(
                             inv.getInventoryId(),
                             card != null ? card.getCardId() : null,
+                            card != null ? card.getRarity() : null,
                             card != null ? card.getName() : null,
-                            card != null ? card.getImage() : null,
+                            card != null ? card.getImageUrl() : null,
+                            card != null ? card.getMainImg() : null,
+                            card != null ? card.getMana() : null,
+                            card != null ? card.getAttack() : null,
+                            card != null ? card.getHealth() : null,
                             Boolean.TRUE.equals(inv.getIsOnDeck()),
                             Boolean.TRUE.equals(inv.getIsForSale()),
                             inv.getSalePrice(),
@@ -62,7 +67,6 @@ public class InventoryServiceImpl implements InventoryService {
                 })
                 .collect(Collectors.toList());
     }
-
 
     public UserCardDTO getCardInInventory(Long userId, Long cardId) {
         Inventory inventory = userCardRepository.findByUserUserIdAndCardCardId(userId, cardId)
@@ -74,10 +78,6 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Transactional
     public void addCardToInventory(Long userId, Long cardId, String actorUsername) {
-        if (userCardRepository.findByUserUserIdAndCardCardId(userId, cardId).isPresent()) {
-            throw new AppException(ErrorCode.USER_CARD_ALREADY_EXISTS);
-        }
-
         Inventory inventory = new Inventory();
         inventory.setUserId(userId);
         inventory.setCardId(cardId);
@@ -219,7 +219,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Async
-    public void sendInventoryEventAsync(String action, Long userId, Long cardId, Long inventoryId, BigDecimal salePrice) {
+    public void sendInventoryEventAsync(String action, Long userId, Long cardId, Long inventoryId, Float salePrice) {
         InventoryEvent event = new InventoryEvent();
         event.setAction(action);
         event.setUserId(userId);

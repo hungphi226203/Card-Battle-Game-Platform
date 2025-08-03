@@ -41,7 +41,11 @@ public class Card {
 
     private Integer health;
 
-    private String image;
+    @Column(name = "image")
+    private String imageUrl;
+
+    @Column(name = "main_image", nullable = true)
+    private String mainImg;
 
     private String description;
 

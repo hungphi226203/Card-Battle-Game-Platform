@@ -2,17 +2,12 @@ package com.web_game.common.DTO.Request.Card;
 
 import com.web_game.common.Enum.EffectType;
 import com.web_game.common.Enum.Target;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
 public class EffectCreateRequest {
-
-    @NotBlank(message = "Effect name is required")
-    @Size(max = 100, message = "Effect name must be less than 100 characters")
-    private String name;
 
     @NotNull(message = "Effect type is required")
     private EffectType type;

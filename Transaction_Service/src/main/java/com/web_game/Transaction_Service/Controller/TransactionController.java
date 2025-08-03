@@ -32,9 +32,10 @@ public class TransactionController {
         }
     }
 
+    /** ✅ Buyer mua thẻ → auto-complete giao dịch */
     @PostMapping
-    public ResponseEntity<ApiResponse> createTransaction(@Valid @RequestBody TransactionRequest request,
-                                                         HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse> createAndCompleteTransaction(@Valid @RequestBody TransactionRequest request,
+                                                                    HttpServletRequest httpRequest) {
         if (!hasRole(httpRequest, "USER")) {
             return ResponseEntity.status(403).body(ApiResponse.builder()
                     .code(403)
@@ -50,10 +51,10 @@ public class TransactionController {
                     .build());
         }
 
-        TransactionResponse response = transactionService.createTransaction(request, userId);
+        TransactionResponse response = transactionService.createAndCompleteTransaction(request, userId);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(201)
-                .message("Tạo giao dịch thành công")
+                .message("Mua thẻ thành công - giao dịch hoàn tất")
                 .data(response)
                 .build());
     }
@@ -72,24 +73,6 @@ public class TransactionController {
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
                 .message("Lấy thông tin giao dịch thành công")
-                .data(response)
-                .build());
-    }
-
-    @PutMapping("/{transactionId}/complete")
-    public ResponseEntity<ApiResponse> completeTransaction(@PathVariable Long transactionId,
-                                                           HttpServletRequest request) {
-        if (!hasRole(request, "SYSTEM")) {
-            return ResponseEntity.status(403).body(ApiResponse.builder()
-                    .code(403)
-                    .message("Forbidden: SYSTEM role required")
-                    .build());
-        }
-
-        TransactionResponse response = transactionService.completeTransaction(transactionId);
-        return ResponseEntity.ok(ApiResponse.builder()
-                .code(200)
-                .message("Hoàn tất giao dịch thành công")
                 .data(response)
                 .build());
     }

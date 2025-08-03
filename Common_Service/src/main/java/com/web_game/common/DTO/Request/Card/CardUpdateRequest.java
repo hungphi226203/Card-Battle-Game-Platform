@@ -34,6 +34,9 @@ public class CardUpdateRequest {
     @Size(max = 255, message = "Image URL must be less than 255 characters")
     private String imageUrl;
 
+    @Size(max = 255, message = "Image URL must be less than 255 characters")
+    private String mainImg;
+
     @Valid
     private List<CardEffectBindingRequest> effectBindings;
 }

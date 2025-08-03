@@ -10,5 +10,5 @@ import java.math.BigDecimal;
 public class SellCardRequest {
     @NotNull(message = "Sale price is required")
     @Min(value = 1, message = "Sale price must be greater than 0")
-    private BigDecimal salePrice;
+    private Float salePrice;
 }

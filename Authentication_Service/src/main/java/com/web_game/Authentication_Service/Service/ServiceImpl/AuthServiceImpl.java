@@ -116,7 +116,8 @@ public class AuthServiceImpl implements AuthService {
         return token;
     }
 
-    public void logout(String username) {
+    public void logout(String token) {
+        String username = jwtUtil.getUsernameFromToken(token);
         sessionService.removeSession(username);
     }
 

@@ -11,6 +11,6 @@ public class InventoryEvent {
     private Long userId;
     private Long cardId;
     private Long inventoryId;
-    private BigDecimal salePrice;
+    private Float salePrice;
     private LocalDateTime timestamp;
 }

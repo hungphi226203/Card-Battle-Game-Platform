@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/cards")
@@ -48,18 +47,6 @@ public class CardController {
                 .build());
     }
 
-    // Lấy danh sách Effect để tạo thẻ
-    @GetMapping("/create-info")
-    public ResponseEntity<ApiResponse> getCreateCardInfo(HttpServletRequest request) {
-        checkManagerRole(request);
-        List<EffectDTO> effects = cardService.getAllEffects();
-        return ResponseEntity.ok(ApiResponse.builder()
-                .code(200)
-                .message("Thông tin cần thiết để tạo thẻ")
-                .data(Map.of("effects", effects))
-                .build());
-    }
-
     @PostMapping
     public ResponseEntity<ApiResponse> createCard(@Valid @RequestBody CardCreateRequest request,
                                                   HttpServletRequest httpRequest) {
@@ -69,19 +56,6 @@ public class CardController {
                 .code(201)
                 .message("Tạo thẻ thành công")
                 .data(card)
-                .build());
-    }
-
-    @GetMapping("/{cardId}/update-info")
-    public ResponseEntity<ApiResponse> getUpdateCardInfo(@PathVariable Long cardId,
-                                                         HttpServletRequest request) {
-        checkManagerRole(request);
-        CardDTO card = cardService.getCard(cardId);
-        List<EffectDTO> effects = cardService.getAllEffects();
-        return ResponseEntity.ok(ApiResponse.builder()
-                .code(200)
-                .message("Thông tin cần thiết để cập nhật thẻ")
-                .data(Map.of("card", card, "effects", effects))
                 .build());
     }
 

@@ -1,5 +1,6 @@
 package com.web_game.common.Entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.web_game.common.Enum.TriggerType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -22,6 +23,7 @@ public class CardEffectBinding {
 
     @ManyToOne
     @JoinColumn(name = "card_id", nullable = false)
+    @JsonIgnore
     private Card card;
 
     @ManyToOne
