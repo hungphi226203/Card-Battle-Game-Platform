@@ -60,4 +60,19 @@ public class EventController {
                 .data(responses)
                 .build());
     }
+
+    @GetMapping("/gacha/history")
+    public ResponseEntity<ApiResponse> getUserGachaHistory(HttpServletRequest request) {
+        Long userId = getUserIdFromHeader(request);
+        if (userId == null) {
+            throw new RuntimeException("Thiếu X-UserId trong header");
+        }
+
+        return ResponseEntity.ok(ApiResponse.builder()
+                .code(200)
+                .message("Lấy lịch sử gacha thành công")
+                .data(eventService.getUserGachaHistory(userId))
+                .build());
+    }
+
 }

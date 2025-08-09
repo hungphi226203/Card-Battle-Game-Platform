@@ -155,4 +155,20 @@ public class UserController {
                 .data(null)
                 .build());
     }
+
+    @PutMapping("/game/{stage}")
+    public ResponseEntity<ApiResponse> updateStageFromGame(@PathVariable int stage,
+                                                           HttpServletRequest httpRequest) {
+        Long userId = getUserIdFromHeader(httpRequest);
+        if (userId == null) {
+            throw new AccessDeniedException("Thiếu X-UserId trong header");
+        }
+
+        userService.updateStageOnly(userId, stage);
+
+        return ResponseEntity.ok(ApiResponse.builder()
+                .code(200)
+                .message("Cập nhật stage thành công")
+                .build());
+    }
 }

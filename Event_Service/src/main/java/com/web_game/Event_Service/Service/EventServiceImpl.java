@@ -2,23 +2,22 @@ package com.web_game.Event_Service.Service;
 
 import com.web_game.Event_Service.Repository.CardRepository;
 import com.web_game.Event_Service.Repository.GachaHistoryRepository;
+import com.web_game.common.DTO.Respone.GachaHistoryResponse;
 import com.web_game.common.DTO.Respone.GachaResponse;
 import com.web_game.common.Entity.Card;
 import com.web_game.common.Entity.GachaHistory;
 import com.web_game.common.Enum.Rarity;
 import com.web_game.common.Event.GachaEvent;
+import com.web_game.common.Event.NotificationMessage;
 import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
 
 @Service
 public class EventServiceImpl implements EventService {
@@ -32,6 +31,12 @@ public class EventServiceImpl implements EventService {
     @Autowired
     private KafkaTemplate<String, GachaEvent> kafkaTemplate;
 
+    @Autowired
+    private KafkaTemplate<String, NotificationMessage> notificationKafkaTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final double COMMON_RATE = 0.7;
     private static final double RARE_RATE = 0.2;
     private static final double EPIC_RATE = 0.09;
@@ -41,7 +46,6 @@ public class EventServiceImpl implements EventService {
         return cardRepository.findByRarity(rarity);
     }
 
-    // Random card theo tỷ lệ
     private Card getRandomCard() {
         List<Card> common = getCardsByRarity(Rarity.COMMON);
         List<Card> rare = getCardsByRarity(Rarity.RARE);
@@ -60,7 +64,6 @@ public class EventServiceImpl implements EventService {
         return common.get(rand.nextInt(common.size()));
     }
 
-    // Lưu lịch sử + gửi Kafka + trả response
     private GachaResponse saveGacha(Long userId, Card card) {
         GachaHistory history = new GachaHistory();
         history.setUserId(userId);
@@ -82,10 +85,27 @@ public class EventServiceImpl implements EventService {
         return response;
     }
 
+    private void sendGachaNotification(Long userId) {
+        try {
+            NotificationMessage notification = new NotificationMessage();
+            notification.setUserId(userId);
+            notification.setType("GACHA_RECEIVED");
+            notification.setMessage("Bạn đã nhận được thẻ từ gacha!");  // ✅ String đơn giản
+            notification.setTimestamp(System.currentTimeMillis());
+
+            notificationKafkaTemplate.send("notification-events", notification);
+
+        } catch (Exception e) {
+            System.err.println("Failed to send gacha notification: " + e.getMessage());
+        }
+    }
+
     @Override
     public GachaResponse performSingleGacha(Long userId) {
         Card card = getRandomCard();
-        return saveGacha(userId, card);
+        GachaResponse response = saveGacha(userId, card);
+        sendGachaNotification(userId);
+        return response;
     }
 
     @Override
@@ -104,9 +124,27 @@ public class EventServiceImpl implements EventService {
 
         if (!hasLegendary) {
             Card guaranteedLegendary = legendary.get(new Random().nextInt(legendary.size()));
-            results.set(10 - 1, saveGacha(userId, guaranteedLegendary));
+            results.set(9, saveGacha(userId, guaranteedLegendary));
         }
 
+        sendGachaNotification(userId);
+
         return results;
+    }
+
+    @Override
+    public List<GachaHistoryResponse> getUserGachaHistory(Long userId) {
+        List<GachaHistory> histories = gachaHistoryRepository.findByUserIdOrderByTimestampDesc(userId);
+
+        return histories.stream().map(h -> {
+            GachaHistoryResponse dto = new GachaHistoryResponse();
+            dto.setId(h.getId());
+            dto.setUserId(h.getUserId());
+            dto.setCardId(h.getCardId());
+            dto.setCardName(h.getCard() != null ? h.getCard().getName() : null);
+            dto.setRarity(h.getCard() != null ? h.getCard().getRarity() : null);
+            dto.setTimestamp(h.getTimestamp());
+            return dto;
+        }).toList();
     }
 }

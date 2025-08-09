@@ -18,3 +18,5 @@ logging:
   level:
     org.springframework: INFO
     com.web_game: DEBUG
+gateway:
+  url: localhost:8080

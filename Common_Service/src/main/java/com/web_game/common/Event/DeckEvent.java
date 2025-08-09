@@ -1,4 +1,4 @@
-package com.web_game.Inventory_Service.Event;
+package com.web_game.common.Event;
 
 import lombok.*;
 

@@ -1,6 +1,7 @@
-package com.web_game.Authentication_Service.Util; // Note: Changed package to Authentication_Service
+package com.web_game.Authentication_Service.Util;
 
 import com.web_game.common.Entity.User;
+import com.web_game.common.Enum.DeviceType;
 import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
 import io.jsonwebtoken.Claims;
@@ -30,20 +31,18 @@ public class JwtUtil {
     @Value("${jwt.refresh-expiration}")
     private Long refreshExpiration;
 
-    // Method with roles parameter
-    public String generateToken(User user, List<String> roles) {
+    public String generateToken(User user, List<String> roles, DeviceType deviceType, String deviceId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getUserId());
         claims.put("roles", roles);
+        claims.put("deviceType", deviceType.getValue());
+        claims.put("deviceId", deviceId != null ? deviceId : "default");
         return createToken(claims, user.getUsername(), expiration);
     }
 
-    // Overloaded method without roles (for backward compatibility)
-    public String generateToken(User user) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", user.getUserId());
-        claims.put("roles", List.of("USER")); // Default role
-        return createToken(claims, user.getUsername(), expiration);
+    // Backward compatibility
+    public String generateToken(User user, List<String> roles) {
+        return generateToken(user, roles, DeviceType.WEB, "default");
     }
 
     private SecretKey getSigningKey() {
@@ -51,9 +50,11 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateRefreshToken(User user) {
+    public String generateRefreshToken(User user, DeviceType deviceType, String deviceId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getUserId());
+        claims.put("deviceType", deviceType.getValue());
+        claims.put("deviceId", deviceId != null ? deviceId : "default");
         return createToken(claims, user.getUsername(), refreshExpiration);
     }
 
@@ -89,5 +90,23 @@ public class JwtUtil {
 
     public List<String> getRolesFromToken(String token) {
         return validateToken(token).get("roles", List.class);
+    }
+
+    public DeviceType getDeviceTypeFromToken(String token) {
+        String deviceTypeStr = validateToken(token).get("deviceType", String.class);
+        return deviceTypeStr != null ? DeviceType.fromString(deviceTypeStr) : DeviceType.WEB;
+    }
+
+    public String getDeviceIdFromToken(String token) {
+        return validateToken(token).get("deviceId", String.class);
+    }
+
+    public boolean isTokenExpired(String token) {
+        try {
+            Date expiration = validateToken(token).getExpiration();
+            return expiration.before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
     }
 }

@@ -7,7 +7,6 @@ import com.web_game.common.DTO.Respone.DeckResponse;
 public interface DeckService {
     DeckResponse getUserDeck(Long userId);
     DeckResponse updateDeck(Long userId, UpdateDeckRequest request);
-    DeckResponse addCardToDeck(Long userId, Long inventoryId);
-    DeckResponse removeCardFromDeck(Long userId, Long inventoryId);
     CollectionResponse getUserCollection(Long userId);
+    DeckResponse getOpponentDeck(Long opponentId);
 }

@@ -1,6 +1,6 @@
 package com.web_game.Inventory_Service.Service;
 
-import com.web_game.Inventory_Service.Event.DeckEvent;
+import com.web_game.common.Event.DeckEvent;
 import com.web_game.Inventory_Service.Repository.CardRepository;
 import com.web_game.Inventory_Service.Repository.UserCardRepository;
 import com.web_game.common.DTO.Request.Deck.UpdateDeckRequest;
@@ -34,7 +34,7 @@ public class DeckServiceImpl implements DeckService {
     private CardRepository cardRepository;
 
     @Autowired
-    private KafkaTemplate<String, DeckEvent> deckKafkaTemplate;
+    private KafkaTemplate<String, Object> deckKafkaTemplate;
 
     @Override
     public DeckResponse getUserDeck(Long userId) {
@@ -77,45 +77,28 @@ public class DeckServiceImpl implements DeckService {
         requestedCards.forEach(card -> card.setIsOnDeck(true));
         userCardRepository.saveAll(requestedCards);
 
-        sendDeckEventAsync("UPDATE_DECK", userId,
-                requestedCards.stream().map(Inventory::getCardId).collect(Collectors.toList()));
-
         return getUserDeck(userId);
     }
 
     @Override
-    @Transactional
-    public DeckResponse addCardToDeck(Long userId, Long inventoryId) {
-        List<Inventory> currentDeck = userCardRepository.findDeckCardsByUserId(userId);
-        if (currentDeck.size() >= 30) throw new AppException(ErrorCode.DECK_FULL);
+    public DeckResponse getOpponentDeck(Long opponentId) {
+        List<Inventory> deckCards = userCardRepository.findDeckCardsByUserId(opponentId);
 
-        Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
+        if (deckCards.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_DECK_SIZE);
+        }
 
-        if (inventory.getIsOnDeck()) throw new AppException(ErrorCode.CARD_ALREADY_IN_DECK);
-        if (inventory.getIsForSale()) throw new AppException(ErrorCode.CARD_IN_SALE_CANNOT_BE_IN_DECK);
+        List<DeckCardDTO> deckCardDTOs = deckCards.stream()
+                .map(this::convertToDeckCardDTO)
+                .collect(Collectors.toList());
 
-        inventory.setIsOnDeck(true);
-        userCardRepository.save(inventory);
-
-        sendDeckEventAsync("ADD_CARD_TO_DECK", userId, List.of(inventory.getCardId()));
-        return getUserDeck(userId);
+        DeckResponse response = new DeckResponse();
+        response.setUserId(opponentId);
+        response.setCards(deckCardDTOs);
+        response.setTotalCards(deckCardDTOs.size());
+        return response;
     }
 
-    @Override
-    @Transactional
-    public DeckResponse removeCardFromDeck(Long userId, Long inventoryId) {
-        Inventory inventory = userCardRepository.findByInventoryIdAndUserId(inventoryId, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
-
-        if (!inventory.getIsOnDeck()) throw new AppException(ErrorCode.CARD_NOT_IN_DECK);
-
-        inventory.setIsOnDeck(false);
-        userCardRepository.save(inventory);
-
-        sendDeckEventAsync("REMOVE_CARD_FROM_DECK", userId, List.of(inventory.getCardId()));
-        return getUserDeck(userId);
-    }
 
     @Override
     public CollectionResponse getUserCollection(Long userId) {

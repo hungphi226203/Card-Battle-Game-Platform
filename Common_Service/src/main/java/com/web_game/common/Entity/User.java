@@ -55,6 +55,8 @@ public class User {
     @Column(nullable = false)
     private boolean locked = false;
 
+    private Integer stage;
+
     @OneToMany(mappedBy = "user")
     private List<Inventory> inventory;
 

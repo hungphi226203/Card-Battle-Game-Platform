@@ -146,6 +146,16 @@ public class UserServiceImpl implements UserService {
         userRoleRepository.deleteByUserIdAndRoleName(userId, roleEnum);
     }
 
+    @Override
+    @Transactional
+    public void updateStageOnly(Long userId, int stage) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setStage(stage);
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+    }
+
     private UserDTO toDTO(User user, List<String> roles) {
         return UserDTO.builder()
                 .userId(user.getUserId())
@@ -157,6 +167,7 @@ public class UserServiceImpl implements UserService {
                 .dob(user.getDob())
                 .balance(user.getBalance())
                 .image(user.getImage())
+                .stage(user.getStage())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .locked(user.isLocked())

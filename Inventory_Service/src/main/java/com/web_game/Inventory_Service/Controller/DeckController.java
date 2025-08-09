@@ -48,6 +48,22 @@ public class DeckController {
         );
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse> getOpponentDeck(@PathVariable("id") Long opponentId,
+                                                       HttpServletRequest request) {
+        if (!hasUserRole(request)) {
+            return ResponseEntity.status(403).body(
+                    ApiResponse.builder().code(403).message("Forbidden: USER role required").build()
+            );
+        }
+
+        DeckResponse deck = deckService.getOpponentDeck(opponentId);
+        return ResponseEntity.ok(
+                ApiResponse.builder().code(200).message("Lấy deck của đối thủ thành công").data(deck).build()
+        );
+    }
+
+
     @PutMapping
     public ResponseEntity<ApiResponse> updateDeck(@Valid @RequestBody UpdateDeckRequest requestBody,
                                                   HttpServletRequest request) {
@@ -61,38 +77,6 @@ public class DeckController {
         DeckResponse deck = deckService.updateDeck(userId, requestBody);
         return ResponseEntity.ok(
                 ApiResponse.builder().code(200).message("Cập nhật deck thành công").data(deck).build()
-        );
-    }
-
-    @PostMapping("/add")
-    public ResponseEntity<ApiResponse> addCardToDeck(@Valid @RequestBody AddCardToDeckRequest requestBody,
-                                                     HttpServletRequest request) {
-        if (!hasUserRole(request)) {
-            return ResponseEntity.status(403).body(
-                    ApiResponse.builder().code(403).message("Forbidden: USER role required").build()
-            );
-        }
-
-        Long userId = extractUserId(request);
-        DeckResponse deck = deckService.addCardToDeck(userId, requestBody.getInventoryId());
-        return ResponseEntity.ok(
-                ApiResponse.builder().code(200).message("Thêm thẻ vào deck thành công").data(deck).build()
-        );
-    }
-
-    @PostMapping("/remove")
-    public ResponseEntity<ApiResponse> removeCardFromDeck(@Valid @RequestBody RemoveCardFromDeckRequest requestBody,
-                                                          HttpServletRequest request) {
-        if (!hasUserRole(request)) {
-            return ResponseEntity.status(403).body(
-                    ApiResponse.builder().code(403).message("Forbidden: USER role required").build()
-            );
-        }
-
-        Long userId = extractUserId(request);
-        DeckResponse deck = deckService.removeCardFromDeck(userId, requestBody.getInventoryId());
-        return ResponseEntity.ok(
-                ApiResponse.builder().code(200).message("Xóa thẻ khỏi deck thành công").data(deck).build()
         );
     }
 

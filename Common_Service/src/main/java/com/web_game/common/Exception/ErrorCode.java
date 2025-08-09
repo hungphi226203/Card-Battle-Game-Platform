@@ -13,7 +13,7 @@ public enum ErrorCode {
     INVALID_FULL_NAME(1022, "Tên không hợp lệ", HttpStatus.BAD_REQUEST),
 
     INVALID_PASSWORD(1004, "Mật khẩu không đúng", HttpStatus.BAD_REQUEST),
-    INVALID_PASSWORD_LENGTH(1005, "Mật khẩu phải từ 8 ký tự trở lên", HttpStatus.BAD_REQUEST),
+    INVALID_PASSWORD_LENGTH(1005, "Mật khẩu phải từ 6 ký tự trở lên", HttpStatus.BAD_REQUEST),
     NEW_PASSWORD_MUST_BE_DIFFERENT(1006, "Mật khẩu mới không được trùng mật khẩu cũ", HttpStatus.BAD_REQUEST),
     EMAIL_ALREADY_EXISTS(1007, "Email đã tồn tại", HttpStatus.BAD_REQUEST),
     EMAIL_NOT_FOUND(1008, "Email không tồn tại", HttpStatus.NOT_FOUND),
@@ -22,7 +22,7 @@ public enum ErrorCode {
     UNAUTHENTICATED(1010, "Chưa xác thực", HttpStatus.UNAUTHORIZED),
     UNAUTHORIZED(1011, "Bạn không có quyền truy cập", HttpStatus.FORBIDDEN),
 
-    INVALID_DOB(1012, "Tuổi phải ít nhất 1 tuổi", HttpStatus.BAD_REQUEST),
+    INVALID_DOB(1012, "Tuổi phải ít nhất 13 tuổi", HttpStatus.BAD_REQUEST),
     PHONE_NOT_BLANK(1013, "Số điện thoại không được để trống", HttpStatus.BAD_REQUEST),
     INVALID_PHONE(1014, "Số điện thoại không hợp lệ", HttpStatus.BAD_REQUEST),
 
@@ -70,6 +70,11 @@ public enum ErrorCode {
     CARD_ALREADY_IN_DECK(3005, "Thẻ đã có trong deck", HttpStatus.BAD_REQUEST),
     CARD_NOT_IN_DECK(3006, "Thẻ không có trong deck", HttpStatus.BAD_REQUEST),
     CARD_IN_DECK_CANNOT_BE_SOLD(3007, "Thẻ đang trong deck không thể được rao bán", HttpStatus.BAD_REQUEST),
+
+    OKEN_EXPIRED(1010, "Token đã hết hạn", HttpStatus.UNAUTHORIZED),
+    INVALID_TOKEN(1011, "Token không hợp lệ", HttpStatus.UNAUTHORIZED),
+    SESSION_EXPIRED(1013, "Phiên đăng nhập đã hết hạn", HttpStatus.UNAUTHORIZED),
+    DEVICE_NOT_SUPPORTED(1014, "Loại thiết bị không được hỗ trợ", HttpStatus.BAD_REQUEST),
 
     NOTIFICATION_MESSAGE_NOT_BLANK(1030, "Nội dung thông báo không được để trống", HttpStatus.BAD_REQUEST),
     NOTIFICATION_TYPE_INVALID(1031, "Loại thông báo không hợp lệ", HttpStatus.BAD_REQUEST);

@@ -5,16 +5,16 @@ import com.web_game.common.DTO.Request.Auth.*;
 import com.web_game.common.DTO.Respone.ApiResponse;
 import com.web_game.common.Entity.User;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
-    @Autowired
-    private AuthService authService;
+    private final AuthService authService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -28,7 +28,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse> login(@Valid @RequestBody AuthRequest request) {
-        String token = authService.login(request.getUsername(), request.getPassword());
+        String token = authService.login(request);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
                 .message("Đăng nhập thành công")

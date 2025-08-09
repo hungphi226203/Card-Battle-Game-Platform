@@ -22,4 +22,6 @@ public interface UserService {
     void assignRole(Long userId, String roleName);
 
     void removeRole(Long userId, String roleName);
+
+    void updateStageOnly(Long userId, int stage);
 }

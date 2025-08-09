@@ -5,22 +5,36 @@ import com.web_game.Authentication_Service.Repository.UserRepository;
 import com.web_game.Authentication_Service.Repository.UserRoleRepository;
 import com.web_game.Authentication_Service.Service.AuthService;
 import com.web_game.Authentication_Service.Service.SessionService;
+import com.web_game.common.DTO.Request.Auth.AuthRequest;
 import com.web_game.common.DTO.Request.Auth.ChangePasswordRequest;
 import com.web_game.common.DTO.Request.Auth.RegisterRequest;
 import com.web_game.common.Entity.Role;
 import com.web_game.common.Entity.User;
 import com.web_game.common.Entity.UserRole;
+import com.web_game.common.Enum.DeviceType;
 import com.web_game.common.Enum.RoleName;
 import com.web_game.common.Event.UserRegisteredEvent;
 import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
 import com.web_game.Authentication_Service.Util.JwtUtil;
 import io.jsonwebtoken.Claims;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -32,33 +46,33 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
-    @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private RoleRepository roleRepository;
-    @Autowired
-    private UserRoleRepository userRoleRepository;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-    @Autowired
-    private JwtUtil jwtUtil;
-    @Autowired
-    private SessionService sessionService;
-    @Autowired
-    private RedisTemplate<String, String> redisTemplate;
-    @Autowired
-    private JavaMailSender mailSender;
-    @Autowired
-    private KafkaTemplate<String, Object> kafkaTemplate;
 
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+    private final SessionService sessionService;
+    private final RedisTemplate<String, String> redisTemplate;
+    private final JavaMailSender mailSender;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final AuthenticationManager authenticationManager;
+
+    @Value("${jwt.expiration}")
+    private Long expiration;
+
+    @Override
     public User register(RegisterRequest request) {
+
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
         if (request.getDob() != null && request.getDob().isAfter(LocalDate.now().minusYears(13))) {
             throw new AppException(ErrorCode.INVALID_DOB);
@@ -88,77 +102,130 @@ public class AuthServiceImpl implements AuthService {
             UserRegisteredEvent event = new UserRegisteredEvent(user.getUserId());
             kafkaTemplate.send("user-registered-topic", event);
         } catch (Exception e) {
-            System.err.println("Failed to publish UserRegistered event: " + e.getMessage());
+            log.error("Failed to publish UserRegistered event: {}", e.getMessage());
         }
 
+        log.info("User registered successfully: {}", request.getUsername());
         return user;
     }
 
-    public String login(String username, String password) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+    @Override
+    public String login(AuthRequest request) {
+        log.info("Login attempt for user: {} on device: {}", request.getUsername(), request.getDeviceType());
+
+        DeviceType deviceType = request.getDeviceTypeEnum();
+
+        try {
+            log.info("Authenticating user: {}", request.getUsername());
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+            );
+            log.info("Authentication successful for user: {}", request.getUsername());
+
+            String existingToken = sessionService.getSession(request.getUsername(), deviceType);
+            if (existingToken != null && !jwtUtil.isTokenExpired(existingToken)) {
+                log.info("Returning existing valid token for user: {} on device: {} after successful authentication",
+                        request.getUsername(), deviceType.getValue());
+                return existingToken;
+            }
+
+            User user = userRepository.findByUsername(request.getUsername())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            List<UserRole> userRoles = userRoleRepository.findByUserId(user.getUserId());
+            List<String> roles = userRoles.stream()
+                    .map(userRole -> {
+                        Role role = roleRepository.findById(userRole.getRoleId())
+                                .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION));
+                        return role.getRoleName().name();
+                    })
+                    .collect(Collectors.toList());
+
+            String token = jwtUtil.generateToken(user, roles, deviceType, request.getDeviceId());
+
+            sessionService.storeSession(request.getUsername(), deviceType, token, expiration);
+
+            log.info("User {} logged in successfully on device: {}", request.getUsername(), deviceType.getValue());
+            return token;
+
+        } catch (AuthenticationException e) {
+            log.error("Authentication failed for user: {} - {}", request.getUsername(), e.getMessage());
+            throw new AppException(ErrorCode.INVALID_PASSWORD);
+        } catch (Exception e) {
+            log.error("Login error for user: {} - {}", request.getUsername(), e.getMessage(), e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-
-        // Fixed: Get roles properly and remove duplicate collect()
-        List<UserRole> userRoles = userRoleRepository.findByUserId(user.getUserId());
-        List<String> roles = userRoles.stream()
-                .map(userRole -> {
-                    Role role = roleRepository.findById(userRole.getRoleId())
-                            .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION));
-                    return role.getRoleName().name();
-                })
-                .collect(Collectors.toList());
-
-        String token = jwtUtil.generateToken(user, roles); // Pass roles to token generation
-        sessionService.saveSession(username, token);
-        return token;
     }
 
+    @Override
     public void logout(String token) {
-        String username = jwtUtil.getUsernameFromToken(token);
-        sessionService.removeSession(username);
-    }
+        try {
+            String username = jwtUtil.getUsernameFromToken(token);
+            DeviceType deviceType = jwtUtil.getDeviceTypeFromToken(token);
 
-    public Map<String, Object> verifyToken(String token) {
-        Claims claims = jwtUtil.validateToken(token);
-        String username = claims.getSubject();
-        if (!sessionService.isTokenValid(username, token)) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+            sessionService.removeSession(username, deviceType);
+            log.info("User {} logged out from device: {}", username, deviceType.getValue());
+        } catch (Exception e) {
+            log.error("Error during logout", e);
+            throw new AppException(ErrorCode.INVALID_TOKEN);
         }
-        return Map.of(
-                "userId", claims.get("userId"),
-                "username", username,
-                "roles", claims.get("roles")
-        );
     }
 
+    @Override
     public String refreshToken(String refreshToken) {
-        String username = jwtUtil.getUsernameFromToken(refreshToken);
-        String storedRefreshToken = redisTemplate.opsForValue().get("refresh:" + username);
-        if (storedRefreshToken == null || !storedRefreshToken.equals(refreshToken)) {
+        if (jwtUtil.isTokenExpired(refreshToken)) {
             throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        User user = userRepository.findByUsername(username)
+        String username = jwtUtil.getUsernameFromToken(refreshToken);
+        DeviceType deviceType = jwtUtil.getDeviceTypeFromToken(refreshToken);
+
+        // Verify the refresh token is still valid in session
+        if (!sessionService.isTokenValid(username, deviceType, refreshToken)) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+
+        Long userId = jwtUtil.getUserIdFromToken(refreshToken);
+        List<String> roles = jwtUtil.getRolesFromToken(refreshToken);
+        String deviceId = jwtUtil.getDeviceIdFromToken(refreshToken);
+
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // Get user roles for token generation
-        List<UserRole> userRoles = userRoleRepository.findByUserId(user.getUserId());
-        List<String> roles = userRoles.stream()
-                .map(userRole -> {
-                    Role role = roleRepository.findById(userRole.getRoleId())
-                            .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION));
-                    return role.getRoleName().name();
-                })
-                .collect(Collectors.toList());
+        // Generate new token
+        String newToken = jwtUtil.generateToken(user, roles, deviceType, deviceId);
 
-        String newToken = jwtUtil.generateToken(user, roles);
-        redisTemplate.opsForValue().set("session:" + username, newToken, 24, TimeUnit.HOURS);
+        // Update session
+        sessionService.storeSession(username, deviceType, newToken, expiration);
+
         return newToken;
     }
 
+    @Override
+    public Map<String, Object> verifyToken(String token) {
+        try {
+            Claims claims = jwtUtil.validateToken(token);
+            String username = claims.getSubject();
+            DeviceType deviceType = DeviceType.fromString((String) claims.get("deviceType"));
+
+            // Check if token is still valid in session
+            if (!sessionService.isTokenValid(username, deviceType, token)) {
+                throw new AppException(ErrorCode.UNAUTHENTICATED);
+            }
+
+            return Map.of(
+                    "userId", claims.get("userId"),
+                    "username", username,
+                    "roles", claims.get("roles"),
+                    "deviceType", deviceType.getValue()
+            );
+        } catch (Exception e) {
+            log.error("Token verification failed", e);
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+    }
+
+    @Override
     public void changePassword(ChangePasswordRequest request, String token) {
         String username = jwtUtil.getUsernameFromToken(token);
         User user = userRepository.findByUsername(username)
@@ -173,12 +240,16 @@ public class AuthServiceImpl implements AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        user.setUpdatedAt(java.time.LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
-        redisTemplate.delete("session:" + username);
-        redisTemplate.delete("refresh:" + username);
+
+        // Remove ALL sessions for this user (force re-login on all devices)
+        sessionService.removeAllSessions(username);
+
+        log.info("Password changed for user: {}, all sessions invalidated", username);
     }
 
+    @Override
     public void sendResetPasswordEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException(ErrorCode.EMAIL_NOT_FOUND));
@@ -193,6 +264,7 @@ public class AuthServiceImpl implements AuthService {
         mailSender.send(message);
     }
 
+    @Override
     public void resetPassword(String resetToken, String newPassword) {
         String username = redisTemplate.keys("reset:*").stream()
                 .filter(key -> resetToken.equals(redisTemplate.opsForValue().get(key)))
@@ -204,16 +276,12 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
-        user.setUpdatedAt(java.time.LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
-        redisTemplate.delete("reset:" + username);
-        redisTemplate.delete("session:" + username);
-        redisTemplate.delete("refresh:" + username);
-    }
 
-    public User getCurrentUser(String token) {
-        String username = jwtUtil.getUsernameFromToken(token);
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        redisTemplate.delete("reset:" + username);
+        sessionService.removeAllSessions(username);
+
+        log.info("Password reset for user: {}, all sessions invalidated", username);
     }
 }

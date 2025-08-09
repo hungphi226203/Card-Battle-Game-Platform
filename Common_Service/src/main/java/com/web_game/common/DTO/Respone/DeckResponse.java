@@ -14,7 +14,6 @@ import java.util.List;
 @AllArgsConstructor
 public class DeckResponse {
     private Long userId;
-    private String username;
     private List<DeckCardDTO> cards;
     private int totalCards;
 }

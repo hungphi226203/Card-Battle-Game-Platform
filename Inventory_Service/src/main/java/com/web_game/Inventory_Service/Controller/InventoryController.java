@@ -104,12 +104,12 @@ public class InventoryController {
     public ResponseEntity<ApiResponse> addCardToInventoryBySystem(@PathVariable Long userId,
                                                                   @Valid @RequestBody UserCardCreateRequest request,
                                                                   HttpServletRequest requestHeader) {
-        if (!hasRole(requestHeader, "SYSTEM")) {
-            return ResponseEntity.status(403).body(ApiResponse.builder()
-                    .code(403)
-                    .message("Forbidden: SYSTEM role required")
-                    .build());
-        }
+//        if (!hasRole(requestHeader, "SYSTEM")) {
+//            return ResponseEntity.status(403).body(ApiResponse.builder()
+//                    .code(403)
+//                    .message("Forbidden: SYSTEM role required")
+//                    .build());
+//        }
 
         inventoryService.addCardToInventory(userId, request.getCardId(), "SYSTEM");
 

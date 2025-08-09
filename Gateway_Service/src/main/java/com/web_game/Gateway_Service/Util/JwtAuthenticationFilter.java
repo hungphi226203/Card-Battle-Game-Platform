@@ -39,12 +39,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
+    public Mono<Void> filter(ServerWebExchange exchange,
+                             org.springframework.cloud.gateway.filter.GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
 
-        // Skip JWT processing for auth endpoints
-        if (path.startsWith("/auth/")) {
+        if (path.startsWith("/auth/") || path.startsWith("/ws")) {
             return chain.filter(exchange);
         }
 
@@ -56,7 +56,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         String token = authHeader.substring(7);
 
         try {
-            // ✅ 1. Parse JWT
+            // Parse JWT
             Claims claims = Jwts.parserBuilder()
                     .setSigningKey(getSigningKey())
                     .build()
@@ -66,20 +66,24 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             String username = claims.getSubject();
             Object userIdObj = claims.get("userId");
             List<String> roles = claims.get("roles", List.class);
+            String deviceType = claims.get("deviceType", String.class);
 
-            // ✅ 2. Check session Redis
-            String sessionToken = redisTemplate.opsForValue().get("session:" + username);
+            // Check session in Redis using deviceType
+            String sessionKey = String.format("session:%s:%s", username, deviceType != null ? deviceType : "web");
+            String sessionToken = redisTemplate.opsForValue().get(sessionKey);
+
             if (sessionToken == null || !sessionToken.equals(token)) {
-                log.warn("Token for user {} has been revoked or expired", username);
-                return handleUnauthorized(exchange, "Token revoked");
+                log.warn("Token for user {} on device {} has been revoked or expired", username, deviceType);
+                return handleUnauthorized(exchange, "Token revoked or expired");
             }
 
-            // ✅ 3. Add custom headers for downstream services
+            // Add custom headers for downstream services
             Long userId = Long.valueOf(userIdObj.toString());
             ServerHttpRequest mutatedRequest = request.mutate()
                     .header("X-UserId", userId.toString())
                     .header("X-Username", username)
                     .header("X-Roles", String.join(",", roles))
+                    .header("X-DeviceType", deviceType != null ? deviceType : "web")
                     .build();
 
             ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();

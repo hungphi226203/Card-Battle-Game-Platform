@@ -11,6 +11,10 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: websocket-internal
+          uri: http://localhost:8080
+          predicates:
+            - Path=/ws/**
         - id: auth_service
           uri: http://localhost:8086
           predicates:
