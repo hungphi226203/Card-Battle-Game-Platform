@@ -8,12 +8,11 @@ import org.springframework.web.socket.config.annotation.*;
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    // Config endpoint cho STOMP WebSocket
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws")  // endpoint WebSocket
+        registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
-                .withSockJS();       // optional: nếu client dùng SockJS
+                .withSockJS();
     }
 
     // Cấu hình message broker

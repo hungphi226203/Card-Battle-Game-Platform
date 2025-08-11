@@ -12,6 +12,9 @@ public enum ErrorCode {
 
     INVALID_FULL_NAME(1022, "Tên không hợp lệ", HttpStatus.BAD_REQUEST),
 
+    CANNOT_BUY_OWN_CARD(400, "Không thể mua thẻ của chính mình", HttpStatus.BAD_REQUEST),
+    CARD_OWNERSHIP_CHANGED(409, "Thẻ đã chuyển chủ sở hữu", HttpStatus.BAD_REQUEST),
+
     INVALID_PASSWORD(1004, "Mật khẩu không đúng", HttpStatus.BAD_REQUEST),
     INVALID_PASSWORD_LENGTH(1005, "Mật khẩu phải từ 6 ký tự trở lên", HttpStatus.BAD_REQUEST),
     NEW_PASSWORD_MUST_BE_DIFFERENT(1006, "Mật khẩu mới không được trùng mật khẩu cũ", HttpStatus.BAD_REQUEST),

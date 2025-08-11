@@ -171,7 +171,6 @@ public class InventoryServiceImpl implements InventoryService {
 
         sendInventoryEventAsync(AuditAction.LIST_CARD_FOR_SALE, userId, inventory.getCardId(), inventoryId, request.getSalePrice());
 
-        // Send notification for card listed for sale
         Optional<Card> cardOpt = cardRepository.findById(inventory.getCardId());
         if (cardOpt.isPresent()) {
             sendCardSaleNotification(userId, inventory.getCardId(), cardOpt.get(), "CARD_LISTED_FOR_SALE", request.getSalePrice());
@@ -203,7 +202,6 @@ public class InventoryServiceImpl implements InventoryService {
         }
     }
 
-    // Existing methods remain the same...
     public List<InventoryResponse> getCardsForSale() {
         return userCardRepository.findByIsForSaleTrueAndIsOnDeckFalse().stream()
                 .map(inventory -> {
@@ -286,17 +284,17 @@ public class InventoryServiceImpl implements InventoryService {
             sendInventoryEventAsync(AuditAction.TRANSFER_CARD, event.getBuyerId(), inventory.getCardId(),
                     inventory.getInventoryId(), null);
 
-            // 🚀 Send notifications for card transfer
-            Optional<Card> cardOpt = cardRepository.findById(inventory.getCardId());
-            if (cardOpt.isPresent()) {
-                Card card = cardOpt.get();
+            Card card = cardRepository.findById(inventory.getCardId())
+                    .orElseGet(() -> {
+                        Card placeholder = new Card();
+                        placeholder.setCardId(inventory.getCardId());
+                        placeholder.setName("Unknown Card");
+                        return placeholder;
+                    });
 
-                // Notify buyer - they got a new card
-                sendInventoryNotification(event.getBuyerId(), inventory.getCardId(), card, "CARD_PURCHASED", inventory.getInventoryId());
+            sendInventoryNotification(event.getBuyerId(), inventory.getCardId(), card, "CARD_PURCHASED", inventory.getInventoryId());
+            sendCardSaleNotification(previousOwnerId, inventory.getCardId(), card, "CARD_SOLD", event.getPrice());
 
-                // Notify seller - their card was sold
-                sendCardSaleNotification(previousOwnerId, inventory.getCardId(), card, "CARD_SOLD", event.getPrice());
-            }
         }
     }
 
@@ -329,7 +327,6 @@ public class InventoryServiceImpl implements InventoryService {
             cardIndex = (cardIndex + 1) % commonCards.size();
         }
 
-        // Send welcome inventory notification
         sendWelcomeInventoryNotification(userId, totalCardsToCreate);
     }
 
@@ -416,7 +413,6 @@ public class InventoryServiceImpl implements InventoryService {
         }
     }
 
-    // Async helper methods
     @Async
     public void saveAuditLogAsync(String action, String actorUsername, Long targetUserId, Long cardId, String description) {
         try {

@@ -88,6 +88,7 @@
         <module>Notification_Service</module>
         <module>Event_Service</module>
         <module>Transaction_Service</module>
+        <module>Payment_Service</module>
     </modules>
 
     <build>

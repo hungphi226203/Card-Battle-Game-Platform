@@ -15,6 +15,7 @@
         <module name="Event_Service" />
         <module name="Inventory_Service" />
         <module name="Common" />
+        <module name="Payment_Service" />
       </profile>
     </annotationProcessing>
   </component>

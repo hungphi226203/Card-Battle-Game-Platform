@@ -1,0 +1,17 @@
+server:
+  port: 8088
+spring:
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:mysql://localhost:3306/web_game?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: 226203
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+logging:
+  level:
+    org.springframework: INFO
+    com.web_game: DEBUG

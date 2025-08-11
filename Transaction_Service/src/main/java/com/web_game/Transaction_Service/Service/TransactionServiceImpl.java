@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class TransactionServiceImpl implements TransactionService {
@@ -42,38 +43,67 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     @Override
     public TransactionResponse createAndCompleteTransaction(TransactionRequest request, Long buyerUserId) {
-        // 1. Validate
-        Inventory inventory = inventoryRepository.findByInventoryIdAndIsForSaleTrue(request.getInventoryId())
+        // 1. Lock inventory để tránh race condition
+        Inventory inventory = inventoryRepository.lockByIdForUpdate(request.getInventoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
 
+        // 2. Kiểm tra thẻ có còn được bán không
+        if (!Boolean.TRUE.equals(inventory.getIsForSale())) {
+            throw new AppException(ErrorCode.CARD_ALREADY_SOLD);
+        }
+
+        // 3. Lấy thông tin user và kiểm tra
         User buyer = userRepository.findById(buyerUserId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         User seller = userRepository.findById(inventory.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        if (buyer.getUserId().equals(seller.getUserId())) throw new AppException(ErrorCode.INVALID_TRANSACTION);
-        if (buyer.getBalance().compareTo(inventory.getSalePrice()) < 0) throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
+        // 4. Kiểm tra buyer không thể mua thẻ của chính mình
+        if (buyerUserId.equals(inventory.getUserId())) {
+            throw new AppException(ErrorCode.CANNOT_BUY_OWN_CARD);
+        }
 
-        // 2. Update balance + save transaction record
-        buyer.setBalance(buyer.getBalance() - inventory.getSalePrice());
-        seller.setBalance(seller.getBalance() + inventory.getSalePrice());
+        // 5. Kiểm tra số dư
+        Float buyerBalance = Optional.ofNullable(buyer.getBalance()).orElse(0f);
+        Float sellerBalance = Optional.ofNullable(seller.getBalance()).orElse(0f);
+
+        if (buyerBalance.compareTo(inventory.getSalePrice()) < 0) {
+            throw new AppException(ErrorCode.INSUFFICIENT_BALANCE);
+        }
+
+        // 6. Lưu giá bán trước khi cập nhật inventory
+        Float salePrice = inventory.getSalePrice();
+
+        // 7. Cập nhật số dư
+        buyer.setBalance(buyerBalance - salePrice);
+        seller.setBalance(sellerBalance + salePrice);
+
+        // 8. Cập nhật ownership của thẻ - QUAN TRỌNG!
+        inventory.setUserId(buyerUserId);
+        inventory.setIsForSale(false);
+        inventory.setSalePrice(null);
+        inventory.setAcquiredAt(LocalDateTime.now());
+
+        // 9. Lưu tất cả thay đổi
         userRepository.save(buyer);
         userRepository.save(seller);
+        inventoryRepository.save(inventory);
 
+        // 10. Tạo transaction record
         Transaction transaction = new Transaction();
         transaction.setSellerId(seller.getUserId());
         transaction.setBuyerId(buyer.getUserId());
-        transaction.setInventoryId(inventory.getInventoryId()); // chỉ gửi ID, không update ownership
-        transaction.setPrice(inventory.getSalePrice());
+        transaction.setInventoryId(inventory.getInventoryId());
+        transaction.setPrice(salePrice); // Sử dụng giá đã lưu trước đó
         transaction.setStatus(TransactionStatus.COMPLETED);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
         Transaction savedTransaction = transactionRepository.save(transaction);
 
-        // 3. Gửi Kafka event (ownership sẽ được InventoryService xử lý)
-        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, savedTransaction, savedTransaction.getPrice());
+        // 11. Gửi Kafka event
+        sendTransactionEventAsync(AuditAction.COMPLETE_TRANSACTION, savedTransaction, salePrice);
 
-        // 4. Log audit
+        // 12. Log audit
         saveAuditLogAsync(AuditAction.COMPLETE_TRANSACTION, buyer.getUsername(), buyer.getUserId(),
                 inventory.getCardId(), "Giao dịch hoàn tất: user " + buyer.getUserId() +
                         " mua thẻ từ user " + seller.getUserId());
@@ -98,7 +128,6 @@ public class TransactionServiceImpl implements TransactionService {
                 .toList();
     }
 
-
     @Override
     public TransactionResponse getTransaction(Long transactionId) {
         Transaction transaction = transactionRepository.findById(transactionId)
@@ -122,6 +151,16 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setStatus(TransactionStatus.CANCELLED);
         transaction.setUpdatedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
+
+        // Nếu cancel, cần restore lại inventory status
+        try {
+            Inventory inventory = inventoryRepository.findById(transaction.getInventoryId()).orElse(null);
+            if (inventory != null && inventory.getUserId().equals(transaction.getSellerId())) {
+                inventory.setIsForSale(true);
+                inventory.setSalePrice(transaction.getPrice());
+                inventoryRepository.save(inventory);
+            }
+        } catch (Exception ignored) {}
 
         try {
             saveAuditLogAsync(AuditAction.CANCEL_TRANSACTION, userId.toString(), transaction.getBuyerId(),
