@@ -14,8 +14,8 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/auth/**").permitAll()
-                        .pathMatchers("/actuator/**").permitAll() // If you have actuator endpoints
-                        .anyExchange().permitAll() // Let JWT filter handle authentication
+                        .pathMatchers("/actuator/**").permitAll()
+                        .anyExchange().permitAll()
                 )
                 .build();
     }

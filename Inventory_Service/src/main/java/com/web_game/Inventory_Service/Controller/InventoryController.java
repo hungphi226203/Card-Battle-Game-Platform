@@ -53,7 +53,7 @@ public class InventoryController {
                 .build());
     }
 
-    @GetMapping("/{cardId}")
+    @GetMapping("/card/{cardId}")
     public ResponseEntity<ApiResponse> getCardInInventory(@PathVariable Long cardId,
                                                           HttpServletRequest request) {
         if (!hasRole(request, "USER")) {
@@ -69,6 +69,19 @@ public class InventoryController {
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
                 .message("Lấy thông tin thẻ trong kho thành công")
+                .data(card)
+                .build());
+    }
+
+    @GetMapping("/item/{inventoryId}")
+    public ResponseEntity<ApiResponse> getCardByInventoryId(@PathVariable Long inventoryId,
+                                                            HttpServletRequest request) {
+        // Không cần check role nữa vì bạn muốn user nào cũng truy cập được
+        UserCardDTO card = inventoryService.getCardByInventoryId(inventoryId);
+
+        return ResponseEntity.ok(ApiResponse.builder()
+                .code(200)
+                .message("Lấy thông tin thẻ theo inventoryId thành công")
                 .data(card)
                 .build());
     }

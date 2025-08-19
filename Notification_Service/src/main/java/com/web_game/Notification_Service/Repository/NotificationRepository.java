@@ -42,4 +42,22 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.createdAt < :cutoffDate")
     void deleteOldNotifications(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    //=======ADMIN===========
+    @Query("SELECT n FROM Notification n WHERE n.groupId IS NOT NULL AND n.id = (SELECT MAX(n2.id) FROM Notification n2 WHERE n2.groupId = n.groupId) ORDER BY n.createdAt DESC")
+    List<Notification> findGlobalNotifications();
+
+    @Modifying
+    @Query(value = "UPDATE notifications SET " +
+            "message = COALESCE(:message, message), " +
+            "type = COALESCE(:type, type) " +
+            "WHERE group_id = :groupId",
+            nativeQuery = true)
+    void updateByGroupId(@Param("groupId") String groupId,
+                         @Param("message") String message,
+                         @Param("type") String type);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.groupId = :groupId")
+    int deleteByGroupId(@Param("groupId") String groupId);
 }

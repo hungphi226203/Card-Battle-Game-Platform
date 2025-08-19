@@ -32,4 +32,6 @@ public interface UserCardRepository extends JpaRepository<Inventory, Long> {
     List<Inventory> findDeckCardsByUserId(@Param("userId") Long userId);
 
     List<Inventory> findByUserIdAndIsForSaleTrueAndIsOnDeckFalse(Long userId);
+
+    Optional<Inventory> findByInventoryId(Long inventoryId);
 }

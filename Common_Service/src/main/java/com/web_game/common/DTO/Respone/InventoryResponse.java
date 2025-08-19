@@ -15,6 +15,10 @@ public class InventoryResponse {
     private Float salePrice;
     private LocalDateTime acquiredAt;
 
+    private int mana;
+    private int attack;
+    private int health;
+
     private String cardName;
     private String imageUrl;
     private String mainImg;

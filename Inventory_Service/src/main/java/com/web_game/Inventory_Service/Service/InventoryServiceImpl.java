@@ -83,6 +83,29 @@ public class InventoryServiceImpl implements InventoryService {
         return dto;
     }
 
+    public UserCardDTO getCardByInventoryId(Long inventoryId) {
+        Inventory inventory = userCardRepository.findByInventoryId(inventoryId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_CARD_NOT_FOUND));
+
+        Card card = inventory.getCard();
+
+        return new UserCardDTO(
+                inventory.getInventoryId(),
+                card != null ? card.getCardId() : null,
+                card != null ? card.getRarity() : null,
+                card != null ? card.getName() : null,
+                card != null ? card.getImageUrl() : null,
+                card != null ? card.getMainImg() : null,
+                card != null ? card.getMana() : null,
+                card != null ? card.getAttack() : null,
+                card != null ? card.getHealth() : null,
+                Boolean.TRUE.equals(inventory.getIsOnDeck()),
+                Boolean.TRUE.equals(inventory.getIsForSale()),
+                inventory.getSalePrice(),
+                inventory.getAcquiredAt()
+        );
+    }
+
     @Transactional
     public void addCardToInventory(Long userId, Long cardId, String actorUsername) {
         // Get card details for notification
@@ -214,6 +237,9 @@ public class InventoryServiceImpl implements InventoryService {
                         response.setMainImg(card.getMainImg());
                         response.setRarity(card.getRarity());
                         response.setType(card.getType());
+                        response.setMana(card.getMana());
+                        response.setAttack(card.getAttack());
+                        response.setHealth(card.getHealth());
                     });
 
                     userRepository.findById(inventory.getUserId()).ifPresent(user -> {
@@ -238,6 +264,9 @@ public class InventoryServiceImpl implements InventoryService {
                         response.setMainImg(card.getMainImg());
                         response.setRarity(card.getRarity());
                         response.setType(card.getType());
+                        response.setMana(card.getMana());
+                        response.setAttack(card.getAttack());
+                        response.setHealth(card.getHealth());
                     });
 
                     userRepository.findById(userId).ifPresent(user -> {

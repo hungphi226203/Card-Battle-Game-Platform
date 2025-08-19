@@ -19,4 +19,6 @@ public class NotificationResponse {
     private boolean isRead;
     private LocalDateTime createdAt;
     private Long transactionId;
+
+    private String groupId; //new
 }

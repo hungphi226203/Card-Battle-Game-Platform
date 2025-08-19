@@ -41,4 +41,7 @@ public class Notification {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "group_id")
+    private String groupId;
 }

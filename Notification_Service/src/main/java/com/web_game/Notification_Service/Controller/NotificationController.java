@@ -1,9 +1,12 @@
 package com.web_game.Notification_Service.Controller;
 
 import com.web_game.Notification_Service.Service.NotificationService;
+import com.web_game.common.DTO.Request.Notification.NotificationRequest;
+import com.web_game.common.DTO.Request.Notification.NotificationUpdateRequest;
 import com.web_game.common.DTO.Respone.ApiResponse;
 import com.web_game.common.DTO.Respone.NotificationResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
@@ -127,5 +130,113 @@ public class NotificationController {
                 .code(200)
                 .message("Đánh dấu tất cả thông báo đã đọc thành công")
                 .build());
+    }
+
+    //===========ADMIN=====================
+    @GetMapping("/admin-notifications")
+    public ResponseEntity<ApiResponse> getNotificationsFromAdmin() {
+        try {
+            List<NotificationResponse> notifications = notificationService.getAllNotifications();
+            return ResponseEntity.ok(ApiResponse.builder()
+                    .code(200)
+                    .message("Lấy thông báo từ Admin thành công")
+                    .data(notifications)
+                    .build());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(
+                    ApiResponse.builder()
+                            .code(500)
+                            .message("Lỗi khi lấy thông báo: " + e.getMessage())
+                            .build());
+        }
+    }
+    @PostMapping("/create")
+    public ResponseEntity<ApiResponse> createNotificationForAllUsers(
+            @RequestBody @Valid NotificationRequest request,
+            HttpServletRequest httpRequest) {
+
+        // Kiểm tra quyền admin
+//        String role = httpRequest.getHeader("X-UserRole");
+//        if (!"ADMIN".equals(role)) {
+//            return ResponseEntity.status(403).body(
+//                    ApiResponse.builder()
+//                            .code(403)
+//                            .message("Chỉ admin mới có quyền tạo thông báo cho tất cả user")
+//                            .build());
+//        }
+
+        try {
+            notificationService.createNotificationForAllUsers(request);
+            return ResponseEntity.ok(ApiResponse.builder()
+                    .code(200)
+                    .message("Tạo thông báo cho tất cả user thành công")
+                    .build());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(
+                    ApiResponse.builder()
+                            .code(500)
+                            .message("Lỗi khi tạo thông báo: " + e.getMessage())
+                            .build());
+        }
+    }
+
+    @PutMapping("/update")
+    public ResponseEntity<ApiResponse> updateNotificationForGroup(
+            @RequestBody @Valid NotificationUpdateRequest request,
+            HttpServletRequest httpRequest) {
+
+        // Kiểm tra quyền admin
+//        String role = httpRequest.getHeader("X-UserRole");
+//        if (!"ADMIN".equals(role)) {
+//            return ResponseEntity.status(403).body(
+//                    ApiResponse.builder()
+//                            .code(403)
+//                            .message("Chỉ admin mới có quyền cập nhật thông báo cho nhóm")
+//                            .build());
+//        }
+
+        try {
+            notificationService.updateNotification(request);
+            return ResponseEntity.ok(ApiResponse.builder()
+                    .code(200)
+                    .message("Cập nhật thông báo cho nhóm thành công")
+                    .build());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(
+                    ApiResponse.builder()
+                            .code(500)
+                            .message("Lỗi khi cập nhật thông báo: " + e.getMessage())
+                            .build());
+        }
+    }
+
+    @DeleteMapping("/{groupId}")
+    public ResponseEntity<ApiResponse> deleteNotificationsByGroupId(
+            @PathVariable String groupId,
+            HttpServletRequest httpRequest) {
+
+        // Kiểm tra quyền admin
+//        String role = httpRequest.getHeader("X-UserRole");
+//        if (!"ADMIN".equals(role)) {
+//            return ResponseEntity.status(403).body(
+//                    ApiResponse.builder()
+//                            .code(403)
+//                            .message("Chỉ admin mới có quyền xóa thông báo theo nhóm")
+//                            .build());
+//        }
+
+        try {
+            notificationService.deleteByGroupId(groupId);
+            return ResponseEntity.ok(ApiResponse.builder()
+                    .code(200)
+                    .message("Xóa thông báo theo nhóm thành công")
+                    .build());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(
+                    ApiResponse.builder()
+                            .code(500)
+                            .message("Lỗi khi xóa thông báo: " + e.getMessage())
+                            .build());
+        }
     }
 }

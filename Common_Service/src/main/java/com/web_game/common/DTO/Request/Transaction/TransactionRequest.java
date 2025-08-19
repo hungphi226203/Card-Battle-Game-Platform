@@ -9,8 +9,4 @@ public class TransactionRequest {
     @NotNull(message = "Inventory ID is required")
     @Min(value = 1, message = "Inventory ID must be positive")
     private Long inventoryId;
-
-    @NotNull(message = "Buyer ID is required")
-    @Min(value = 1, message = "Buyer ID must be positive")
-    private Long buyerId;
 }

@@ -6,7 +6,8 @@ public enum NotificationType {
     INVENTORY_UPDATE("Cập nhật kho đồ"),
     GACHA_REWARD("Thưởng gacha"),
     MARKET_ACTIVITY("Hoạt động chợ"),
-    SYSTEM_NOTIFICATION("Thông báo hệ thống"),
+    SYSTEM("Thông báo hệ thống"),
+    EVENT("Thông báo sự kiện"),
     WELCOME("Chào mừng"),
     BALANCE_UPDATE("Cập nhật số dư");
 

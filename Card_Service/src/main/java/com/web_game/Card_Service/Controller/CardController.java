@@ -50,7 +50,7 @@ public class CardController {
     @PostMapping
     public ResponseEntity<ApiResponse> createCard(@Valid @RequestBody CardCreateRequest request,
                                                   HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         CardDTO card = cardService.createCard(request);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(201)
@@ -63,7 +63,7 @@ public class CardController {
     public ResponseEntity<ApiResponse> updateCard(@PathVariable Long cardId,
                                                   @Valid @RequestBody CardUpdateRequest request,
                                                   HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         CardDTO card = cardService.updateCard(cardId, request);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
@@ -75,7 +75,7 @@ public class CardController {
     @DeleteMapping("/{cardId}")
     public ResponseEntity<ApiResponse> deleteCard(@PathVariable Long cardId,
                                                   HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         cardService.deleteCard(cardId);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
@@ -109,7 +109,7 @@ public class CardController {
     @PostMapping("/effects")
     public ResponseEntity<ApiResponse> createEffect(@Valid @RequestBody EffectCreateRequest request,
                                                     HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         EffectDTO effect = cardService.createEffect(request);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(201)
@@ -122,7 +122,7 @@ public class CardController {
     public ResponseEntity<ApiResponse> updateEffect(@PathVariable Long effectId,
                                                     @Valid @RequestBody EffectUpdateRequest request,
                                                     HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         EffectDTO effect = cardService.updateEffect(effectId, request);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
@@ -134,7 +134,7 @@ public class CardController {
     @DeleteMapping("/effects/{effectId}")
     public ResponseEntity<ApiResponse> deleteEffect(@PathVariable Long effectId,
                                                     HttpServletRequest httpRequest) {
-        checkManagerRole(httpRequest);
+        checkManagerOrAdminRole(httpRequest);
         cardService.deleteEffect(effectId);
         return ResponseEntity.ok(ApiResponse.builder()
                 .code(200)
@@ -144,12 +144,13 @@ public class CardController {
     }
 
     // ==================== HELPER ==================== //
-    private void checkManagerRole(HttpServletRequest request) {
+    private void checkManagerOrAdminRole(HttpServletRequest request) {
         String rolesHeader = request.getHeader("X-Roles");
         if (rolesHeader == null || Arrays.stream(rolesHeader.split(","))
                 .map(String::trim)
-                .noneMatch(role -> role.equalsIgnoreCase("MANAGER"))) {
-            throw new AccessDeniedException("Bạn không có quyền MANAGER để thực hiện thao tác này.");
+                .noneMatch(role -> role.equalsIgnoreCase("MANAGER") || role.equalsIgnoreCase("ADMIN"))) {
+            throw new AccessDeniedException("Bạn cần quyền MANAGER hoặc ADMIN để thực hiện thao tác này.");
         }
     }
+
 }

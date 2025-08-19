@@ -9,6 +9,7 @@ import com.web_game.common.DTO.shared.EffectDTO;
 import com.web_game.common.Entity.Card;
 import com.web_game.common.Entity.CardEffect;
 import com.web_game.common.Entity.CardEffectBinding;
+import com.web_game.common.Enum.CardType;
 import com.web_game.common.Exception.AppException;
 import com.web_game.common.Exception.ErrorCode;
 import org.springframework.beans.BeanUtils;
@@ -52,6 +53,14 @@ public class CardServiceImpl implements CardService{
     @Override
     @Transactional
     public CardDTO createCard(CardCreateRequest request) {
+
+        if (request.getType() == CardType.SPELL) {
+            if ((request.getAttack() != null && request.getAttack() != 0) ||
+                    (request.getHealth() != null && request.getHealth() != 0)) {
+                throw new AppException(ErrorCode.INVALID_CARD_SPELL);
+            }
+        }
+
         Card card = new Card();
         BeanUtils.copyProperties(request, card);
         card.setCreatedAt(LocalDateTime.now());
@@ -72,7 +81,18 @@ public class CardServiceImpl implements CardService{
     @Transactional
     public CardDTO updateCard(Long cardId, CardUpdateRequest request) {
         Card card = cardRepository.findByCardId(cardId)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CARD_VALUE));
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CARD_SPELL));
+
+        CardType typeToCheck = request.getType() != null ? request.getType() : card.getType();
+        Integer atkToCheck = request.getAttack() != null ? request.getAttack() : card.getAttack();
+        Integer healthToCheck = request.getHealth() != null ? request.getHealth() : card.getHealth();
+
+        if (typeToCheck == CardType.SPELL) {
+            if ((atkToCheck != null && atkToCheck != 0) ||
+                    (healthToCheck != null && healthToCheck != 0)) {
+                throw new AppException(ErrorCode.INVALID_CARD_SPELL);
+            }
+        }
 
         if (request.getName() != null) card.setName(request.getName());
         if (request.getType() != null) card.setType(request.getType());

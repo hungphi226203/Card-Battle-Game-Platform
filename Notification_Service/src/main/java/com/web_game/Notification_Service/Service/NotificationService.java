@@ -3,6 +3,9 @@ package com.web_game.Notification_Service.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web_game.Notification_Service.Client.WebSocketGatewayClient;
 import com.web_game.Notification_Service.Repository.NotificationRepository;
+import com.web_game.Notification_Service.Repository.UserRepository;
+import com.web_game.common.DTO.Request.Notification.NotificationRequest;
+import com.web_game.common.DTO.Request.Notification.NotificationUpdateRequest;
 import com.web_game.common.DTO.Respone.NotificationResponse;
 import com.web_game.common.Entity.Notification;
 import com.web_game.common.Entity.User;
@@ -22,8 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,6 +40,7 @@ public class NotificationService {
     private final SimpMessagingTemplate messagingTemplate;
     private final WebSocketGatewayClient webSocketGatewayClient;
     private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
 
     // ============= KAFKA LISTENERS =============
 
@@ -153,6 +159,134 @@ public class NotificationService {
         sendUnreadCountUpdate(userId, 0);
     }
 
+    //ADMIN METHODS
+    //lay tất cả thông báo cho quản lý thông báo
+    public List<NotificationResponse> getAllNotifications() {
+        List<Notification> notifications = notificationRepository.findGlobalNotifications();
+        return notifications.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void createNotificationForAllUsers(NotificationRequest request) {
+        try {
+            log.info("Creating notification for all users: {}", request.getMessage());
+
+            NotificationType type;
+            try {
+                type = NotificationType.valueOf(request.getType());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid notification type: {}, defaulting to SYSTEM_NOTIFICATION", request.getType());
+                type = NotificationType.SYSTEM;
+            }
+
+            // Tạo groupId DUY NHẤT cho toàn bộ thông báo
+            String groupId = UUID.randomUUID().toString();
+
+            List<Long> allUserIds = userRepository.findAllUserIds();
+            log.info("Found {} users to send notification", allUserIds.size());
+
+            int batchSize = 100;
+            for (int i = 0; i < allUserIds.size(); i += batchSize) {
+                int endIndex = Math.min(i + batchSize, allUserIds.size());
+                List<Long> batch = allUserIds.subList(i, endIndex);
+
+                processBatchNotifications(batch, type, request.getMessage(), groupId); // Truyền groupId vào
+                log.debug("Processed batch {}-{} of {}", i + 1, endIndex, allUserIds.size());
+            }
+
+            log.info("Successfully created notification for all users with groupId: {}", groupId);
+        } catch (Exception e) {
+            log.error("Failed to create notification for all users: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create notification for all users", e);
+        }
+    }
+
+    private void processBatchNotifications(List<Long> userIds, NotificationType type, String message, String groupId) {
+        List<Notification> notifications = new ArrayList<>();
+
+        for (Long userId : userIds) {
+            Notification notification = new Notification();
+
+            User user = new User();
+            user.setUserId(userId);
+            notification.setUser(user);
+
+            notification.setType(type);
+            notification.setMessage(message);
+            notification.setCreatedAt(LocalDateTime.now());
+            notification.setRead(false);
+            notification.setGroupId(groupId); // Sử dụng cùng groupId cho tất cả
+
+            notifications.add(notification);
+        }
+
+        notificationRepository.saveAll(notifications);
+
+        for (Long userId : userIds) {
+            try {
+                sendRealtimeNotification(userId, message, type.name());
+            } catch (Exception e) {
+                log.warn("Failed to send realtime notification to user {}: {}", userId, e.getMessage());
+            }
+        }
+    }
+
+    @Transactional
+    public void updateNotification(NotificationUpdateRequest request) {
+        String groupId = request.getGroupId();
+        try {
+            // Validate input
+            if ((request.getMessage() == null || request.getMessage().trim().isEmpty())
+                    && request.getType() == null) {
+                throw new IllegalArgumentException("No fields to update");
+            }
+
+            String newMessage = null;
+            if (request.getMessage() != null && !request.getMessage().trim().isEmpty()) {
+                newMessage = request.getMessage().trim();
+            }
+
+            NotificationType newType = null;
+            if (request.getType() != null) {
+                try {
+                    newType = NotificationType.valueOf(request.getType());
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid notification type: {}, keeping current type", request.getType());
+                }
+            }
+
+            // Update tất cả bản ghi có cùng groupId
+            notificationRepository.updateByGroupId(groupId, newMessage, newType != null ? newType.name() : null);
+
+            log.info("Updated all notifications with groupId {}", groupId);
+
+            // Nếu cần có thể gửi WebSocket tới tất cả user liên quan
+            // sendNotificationUpdateToGroup(groupId);
+
+        } catch (Exception e) {
+            log.error("Failed to update notifications with groupId {}: {}", groupId, e.getMessage(), e);
+            throw new RuntimeException("Failed to update notifications", e);
+        }
+    }
+
+    @Transactional
+    public void deleteByGroupId(String groupId) {
+        if (groupId == null || groupId.trim().isEmpty()) {
+            throw new IllegalArgumentException("groupId không được để trống");
+        }
+
+        int deletedCount = notificationRepository.deleteByGroupId(groupId);
+
+        if (deletedCount == 0) {
+            throw new RuntimeException("Không tìm thấy thông báo nào với groupId: " + groupId);
+        }
+
+        log.info("Đã xóa {} thông báo với groupId {}", deletedCount, groupId);
+    }
+
+
     // ============= PRIVATE HELPER METHODS =============
 
     private void saveNotification(Long userId, NotificationType type, String message, Long transactionId) {
@@ -248,7 +382,7 @@ public class NotificationService {
                 return NotificationType.MARKET_ACTIVITY;
             // Bỏ case "TRANSFER_CARD"
             default:
-                return NotificationType.SYSTEM_NOTIFICATION;
+                return NotificationType.SYSTEM;
         }
     }
 

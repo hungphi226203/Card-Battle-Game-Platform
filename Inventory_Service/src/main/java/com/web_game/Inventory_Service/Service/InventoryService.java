@@ -23,4 +23,5 @@ public interface InventoryService {
 
     public List<InventoryResponse> getMyCardsForSale(Long userId);
 
+    public UserCardDTO getCardByInventoryId(Long inventoryId);
 }

@@ -217,7 +217,7 @@ public ResponseEntity<ApiResponse<String>> createPayment(@RequestBody VnpayReque
         ResponseEntity<String> response = paymentService.handlePaymentReturn(params);
 
         // Tạo redirect URL với thông báo
-        String redirectUrl = "http://192.168.1.41:3000/payment"; // Thay bằng URL frontend của bạn
+        String redirectUrl = "http://192.168.1.133:3000/payment"; // Thay bằng URL frontend của bạn
         if (response.getStatusCode() == HttpStatus.OK) {
             redirectUrl += "?status=success&message=" + URLEncoder.encode("Thanh toán thành công", StandardCharsets.UTF_8.toString());
         } else {

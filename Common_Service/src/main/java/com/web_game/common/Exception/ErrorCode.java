@@ -43,6 +43,7 @@ public enum ErrorCode {
     CARD_NAME_NOT_BLANK(1023, "Tên thẻ bài không được để trống", HttpStatus.BAD_REQUEST),
     INVALID_RARITY(1024, "Độ hiếm của thẻ bài không hợp lệ", HttpStatus.BAD_REQUEST),
     INVALID_CARD_VALUE(1025, "Giá trị thẻ bài phải lớn hơn hoặc bằng 0", HttpStatus.BAD_REQUEST),
+    INVALID_CARD_SPELL(1025, "Thẻ phép không có attack health", HttpStatus.BAD_REQUEST),
 
     INVALID_EFFECT_VALUE(1006, "Effect không tồn tại", HttpStatus.BAD_REQUEST),
     EFFECT_IN_USE(1007, "Hiệu ứng đang được sử dụng bởi thẻ bài, không thể xóa", HttpStatus.BAD_REQUEST),
